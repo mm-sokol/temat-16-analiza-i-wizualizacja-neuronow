@@ -15,10 +15,12 @@ mogą pozwolić na usprawnienie procesu optymalizacji lub regularyzacji.
 - [ ] Narzędzie, które dla (dowolnej) sieci neuronowej wizualizuje jej strukturę z naciskiem na interpretowalność decyzji modelu
 - [ ] Wykorzystanie narzędzia w celu lepszej optymalizacji i regularyzacji modelu - eksperyment.
 - [ ] Wyjaśnienie procesu podejmowania decyzji przez model
+      
 **Na plus:**
 - [ ] Analiza wewnętrznych aktywacji: zidentyfikowanie neuronów/warstw, które mogą reagować na niepożądane wzorce (np. stereotypy, błędy).
 - [ ] Eksperyment interwencyjny: manipulacja aktywacjami/cechami i obserwacja wpływu na wynik modelu.
 - [ ] Wnioski związane z bezpieczeństwem: czy można wykryć i „wyłączyć” niebezpieczne wzorce? Jak architektura/model można zmodyfikować, by zwiększyć interpretowalność i bezpieczeństwo?
+
 **Materiały:**
 - [praca naukowa](https://arxiv.org/pdf/2501.16496)
 - [mechanisticinterpretability github](https://github.com/apartresearch/mechanisticinterpretability)
