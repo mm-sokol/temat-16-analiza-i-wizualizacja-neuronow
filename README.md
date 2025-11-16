@@ -25,3 +25,6 @@ mogą pozwolić na usprawnienie procesu optymalizacji lub regularyzacji.
 - [praca naukowa](https://arxiv.org/pdf/2501.16496)
 - [mechanisticinterpretability github](https://github.com/apartresearch/mechanisticinterpretability)
 - [artykuł](https://intuitionlabs.ai/articles/mechanistic-interpretability-ai-llms)
+
+Więcej materiałów:
+- [mechanistic interpretability with sparse autoencoder (youtube)](https://www.youtube.com/watch?v=UGO_Ehywuxc) - trochę intuicji stojącej za metodą korzystającą z SAE na przykładzie llmów
