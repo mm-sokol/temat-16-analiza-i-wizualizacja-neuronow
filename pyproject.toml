@@ -1,0 +1,24 @@
+[project]
+name = "temat-16"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "flake8>=7.3.0",
+    "matplotlib>=3.10.8",
+    "numpy>=2.3.5",
+    "pandas>=2.3.3",
+    "pip>=25.3",
+    "pytest>=9.0.2",
+    "python-dotenv>=1.2.1",
+    "seaborn>=0.13.2",
+    "torch>=2.9.1",
+    "tqdm>=4.67.1",
+    "transformers>=4.57.3",
+]
+
+[tool.uv.workspace]
+members = [
+    "sae",
+]

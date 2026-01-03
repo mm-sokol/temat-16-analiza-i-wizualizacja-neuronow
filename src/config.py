@@ -5,6 +5,8 @@ Store useful variables and configuration
 from pathlib import Path
 
 from dotenv import load_dotenv
+import torch, os, random
+import numpy as np
 
 # Load environment variables from .env file if it exists
 load_dotenv()
@@ -22,3 +24,20 @@ MODELS_DIR = PROJ_ROOT / "models"
 
 REPORTS_DIR = PROJ_ROOT / "reports"
 FIGURES_DIR = REPORTS_DIR / "figures"
+
+
+def seed_everything(seed=101, verbose=False):
+    random.seed(seed)
+    os.environ["PYTHONHASHSEED"] = str(seed)
+    np.random.seed(seed)
+
+    torch.manual_seed(seed)
+
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+
+    if verbose:
+        print(f"RNG seed: {seed}")
