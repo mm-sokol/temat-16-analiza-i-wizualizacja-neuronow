@@ -1,21 +1,75 @@
-"""
-Code to run model inference with trained models
-"""
+import torch
+from src.config import ProjectConfig
+from src.modeling.architecture import InterpretableMLP
+from src.features import ModelInterpreter
+from src.plots import VisualizationEngine
+from src.dataset import MNISTDataModule
 
-from pathlib import Path
+class InferenceRunner:
+    """
+    Orchestrates the prediction and interpretation pipeline.
+    """
+    def __init__(self, config: ProjectConfig) -> None:
+        self.config = config
+        self.visualizer = VisualizationEngine(config.FIGURES_DIR)
 
-from src.config import MODELS_DIR, PROCESSED_DATA_DIR
+    def load_model(self, filename: str) -> InterpretableMLP:
+        model = InterpretableMLP(self.config.INPUT_SIZE, self.config.HIDDEN_SIZE, self.config.OUTPUT_SIZE)
+        path = self.config.MODELS_DIR / filename
+        
+        if not path.exists():
+            raise FileNotFoundError(f"Model {filename} not found. Run train.py first.")
+            
+        model.load_state_dict(torch.load(path))
+        return model
 
+    def analyze_model(self, model_filename: str, input_image: torch.Tensor, target_label: int) -> None:
+        print(f"Analyzing: {model_filename}...")
+        model = self.load_model(model_filename)
+        interpreter = ModelInterpreter(model)
+        
+        # 1. Structural Analysis (Visualize Weights)
+        # This checks if regularization successfully sparsified the connections
+        fc1_weights = interpreter.get_layer_weights("fc1")
+        self.visualizer.plot_weight_matrix(
+            fc1_weights, 
+            f"Weights ({model_filename})", 
+            f"weights_{model_filename}.png"
+        )
+        
+        # 2. Decision Process (Saliency Map)
+        # This checks which pixels the model focused on
+        saliency = interpreter.compute_saliency_map(input_image, target_label)
+        self.visualizer.plot_saliency(
+            input_image, 
+            saliency, 
+            f"saliency_{model_filename}.png"
+        )
 
-def main(
-    # ---- REPLACE DEFAULT PATHS AS APPROPRIATE ----
-    features_path: Path = PROCESSED_DATA_DIR / "test_features.csv",
-    model_path: Path = MODELS_DIR / "model.pkl",
-    predictions_path: Path = PROCESSED_DATA_DIR / "test_predictions.csv",
-    # -----------------------------------------
-):
-    pass
+def run_analysis() -> None:
+    config = ProjectConfig()
+    runner = InferenceRunner(config)
+    
+    # Get a sample image
+    data_module = MNISTDataModule(config)
+    _, test_loader = data_module.get_data_loaders()
+    images, labels = next(iter(test_loader))
+    
+    # Select first image
+    sample_img = images[0:1]
+    sample_label = labels[0].item()
+    
+    # Analyze Standard Model
+    try:
+        runner.analyze_model("standard_mlp.pth", sample_img, sample_label)
+    except FileNotFoundError:
+        print("Standard model not found.")
 
+    # Analyze Sparse Model
+    try:
+        runner.analyze_model("sparse_mlp.pth", sample_img, sample_label)
+    except FileNotFoundError:
+        print("Sparse model not found.")
 
 if __name__ == "__main__":
-    main()
+    run_analysis()
