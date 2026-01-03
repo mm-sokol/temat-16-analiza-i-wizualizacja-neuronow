@@ -1,21 +1,51 @@
-"""
-Code to download or generate data
-"""
+import torch
+from torchvision import datasets, transforms
+from torch.utils.data import DataLoader
+from typing import Tuple
+from src.config import ProjectConfig
 
-from pathlib import Path
+class MNISTDataModule:
+    """
+    Encapsulates logic for downloading and preparing the MNIST dataset.
+    """
+    def __init__(self, config: ProjectConfig) -> None:
+        self.config = config
+        # Standard normalization for MNIST
+        self.transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.1307,), (0.3081,))
+        ])
 
-from src.config import PROCESSED_DATA_DIR, RAW_DATA_DIR
+    def get_data_loaders(self) -> Tuple[DataLoader, DataLoader]:
+        """
+        Creates and returns Training and Testing DataLoaders.
+        """
+        self.config.RAW_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
+        train_dataset = datasets.MNIST(
+            root=str(self.config.RAW_DATA_DIR),
+            train=True,
+            download=True,
+            transform=self.transform
+        )
+        
+        test_dataset = datasets.MNIST(
+            root=str(self.config.RAW_DATA_DIR),
+            train=False,
+            download=True,
+            transform=self.transform
+        )
 
-def main(
-    # ---- REPLACE DEFAULT PATHS AS APPROPRIATE ----
-    input_path: Path = RAW_DATA_DIR / "dataset.csv",
-    output_path: Path = PROCESSED_DATA_DIR / "dataset.csv"
-    # ----------------------------------------------
-):
+        train_loader = DataLoader(
+            dataset=train_dataset,
+            batch_size=self.config.BATCH_SIZE,
+            shuffle=True
+        )
 
-    pass
+        test_loader = DataLoader(
+            dataset=test_dataset,
+            batch_size=self.config.BATCH_SIZE,
+            shuffle=False
+        )
 
-
-if __name__ == "__main__":
-    main()
+        return train_loader, test_loader
