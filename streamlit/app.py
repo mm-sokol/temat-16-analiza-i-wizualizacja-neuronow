@@ -43,7 +43,11 @@ st.sidebar.header("Configuration")
 
 demo_mode = st.sidebar.selectbox(
     "Demo Mode",
-    ["Credit Scoring (Bias Demo)", "MNIST (Trained Models)"],
+    [
+        "Credit Scoring (Synthetic)",
+        "Credit Score (Real Dataset)",
+        "MNIST (Trained Models)"
+    ],
     index=0,
 )
 
@@ -54,7 +58,7 @@ st.sidebar.write(f"Device: {device.upper()}")
 # ============================================================================
 # Credit Scoring Demo
 # ============================================================================
-if demo_mode == "Credit Scoring (Bias Demo)":
+if demo_mode == "Credit Scoring (Synthetic)":
     st.markdown("""
     This dashboard visualizes how a neural network processes "Zip Code" (a proxy for redlining)
     to make credit decisions. We use the **src.interpretability** module to identify the specific
@@ -598,3 +602,451 @@ elif demo_mode == "MNIST (Trained Models)":
         st.info("Please train the model first using the training scripts.")
     except Exception as e:
         st.error(f"Error loading model: {e}")
+
+
+# ============================================================================
+# Real Credit Score Dataset Demo
+# ============================================================================
+elif demo_mode == "Credit Score (Real Dataset)":
+    st.markdown("""
+    **Real Credit Score Dataset Analysis**
+
+    This demo uses the Kaggle Credit Score Classification dataset to detect and analyze
+    bias in a neural network trained on real financial data. You can select any
+    **protected attribute** (e.g., Occupation, Age Group) and analyze which neurons
+    encode that information.
+    """)
+
+    # Import data loader
+    from credit_score_data import (
+        load_credit_score_dataset,
+        get_protected_attribute_values,
+        create_contrastive_samples,
+        PROTECTED_ATTRIBUTES,
+    )
+
+    # Sidebar controls
+    max_samples = st.sidebar.slider("Max Samples", 1000, 10000, 5000, step=1000)
+    seed = st.sidebar.number_input("Random Seed", value=42, min_value=0)
+
+    if st.sidebar.button("Reload Dataset"):
+        st.cache_data.clear()
+        st.cache_resource.clear()
+
+    # Load data
+    @st.cache_data
+    def load_data_cached(max_samples: int, seed: int):
+        return load_credit_score_dataset(max_samples=max_samples, random_state=seed)
+
+    try:
+        with st.spinner("Loading and preprocessing dataset..."):
+            df, X, y, encodings, info = load_data_cached(max_samples, seed)
+
+        st.success(f"Loaded {info.num_samples} samples with {info.num_features} features")
+
+        # Show dataset info
+        with st.expander("Dataset Information"):
+            col1, col2 = st.columns(2)
+            with col1:
+                st.write("**Numerical Features:**")
+                for f in info.numerical_features:
+                    st.write(f"  - {f}")
+            with col2:
+                st.write("**Categorical Features:**")
+                for f in info.categorical_features:
+                    st.write(f"  - {f}")
+
+            st.write("**Target Distribution:**")
+            target_dist = df['Credit_Score'].value_counts().sort_index()
+            target_names = {0: 'Poor', 1: 'Standard', 2: 'Good'}
+            for idx, count in target_dist.items():
+                st.write(f"  - {target_names[idx]}: {count} ({count/len(df)*100:.1f}%)")
+
+        # Protected attribute selection
+        st.sidebar.header("Bias Analysis")
+        protected_attr = st.sidebar.selectbox(
+            "Protected Attribute",
+            PROTECTED_ATTRIBUTES,
+            index=0,
+        )
+
+        # Get available values for this attribute
+        attr_values = get_protected_attribute_values(df, protected_attr)
+
+        if len(attr_values) < 2:
+            st.warning(f"Not enough values for {protected_attr} to compare.")
+        else:
+            col1, col2 = st.sidebar.columns(2)
+            with col1:
+                value_a = st.selectbox("Group A", attr_values, index=0)
+            with col2:
+                other_values = [v for v in attr_values if v != value_a]
+                value_b = st.selectbox("Group B", other_values, index=0)
+
+            st.sidebar.write(f"Comparing: **{value_a}** vs **{value_b}**")
+
+        # Model definition for this dataset
+        class CreditScoreModel(torch.nn.Module):
+            def __init__(self, input_size: int, hidden_sizes: list, output_size: int = 3):
+                super().__init__()
+                self.layer1 = torch.nn.Linear(input_size, hidden_sizes[0])
+                self.relu1 = torch.nn.ReLU()
+                self.layer2 = torch.nn.Linear(hidden_sizes[0], hidden_sizes[1])
+                self.relu2 = torch.nn.ReLU()
+                self.output_layer = torch.nn.Linear(hidden_sizes[1], output_size)
+
+            def forward(self, x):
+                x = self.relu1(self.layer1(x))
+                x = self.relu2(self.layer2(x))
+                x = self.output_layer(x)
+                return x
+
+        # Train model
+        @st.cache_resource
+        def train_credit_model(_X, _y, input_size, epochs=100):
+            model = CreditScoreModel(input_size, [64, 32], output_size=3)
+            model.to(device)
+
+            X_train = _X.to(device)
+            y_train = _y.to(device)
+
+            optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+            criterion = torch.nn.CrossEntropyLoss()
+
+            model.train()
+            for epoch in range(epochs):
+                optimizer.zero_grad()
+                outputs = model(X_train)
+                loss = criterion(outputs, y_train)
+                loss.backward()
+                optimizer.step()
+
+                if (epoch + 1) % 20 == 0:
+                    print(f"Epoch [{epoch+1}/{epochs}], Loss: {loss.item():.4f}")
+
+            model.eval()
+            return model
+
+        with st.spinner("Training model..."):
+            model = train_credit_model(X, y, X.shape[1], epochs=100)
+
+        # Calculate accuracy
+        with torch.no_grad():
+            outputs = model(X.to(device))
+            predictions = outputs.argmax(dim=1).cpu()
+            accuracy = (predictions == y).float().mean().item()
+
+        st.write(f"**Model Accuracy:** {accuracy:.2%}")
+
+        # Create tabs for analysis
+        tab1, tab2, tab3, tab4 = st.tabs([
+            "Dataset & Bias Overview",
+            "Neuron Activations",
+            "Circuit Discovery",
+            "Ablation & Pruning"
+        ])
+
+        # ========== Tab 1: Dataset & Bias Overview ==========
+        with tab1:
+            st.header("Bias Overview by Protected Attribute")
+
+            # Show outcome distribution by protected attribute
+            if protected_attr in df.columns:
+                st.subheader(f"Credit Score Distribution by {protected_attr}")
+
+                # Create cross-tabulation
+                cross_tab = pd.crosstab(
+                    df[protected_attr],
+                    df['Credit_Score'],
+                    normalize='index'
+                ) * 100
+
+                cross_tab.columns = ['Poor', 'Standard', 'Good']
+
+                fig = px.bar(
+                    cross_tab.reset_index(),
+                    x=protected_attr,
+                    y=['Poor', 'Standard', 'Good'],
+                    title=f"Credit Score Distribution by {protected_attr} (%)",
+                    barmode='group'
+                )
+                st.plotly_chart(fig, width='stretch')
+
+                # Model predictions by group
+                st.subheader("Model Predictions by Group")
+
+                df_with_preds = df.copy()
+                with torch.no_grad():
+                    preds = model(X.to(device)).argmax(dim=1).cpu().numpy()
+                df_with_preds['Prediction'] = preds
+
+                pred_by_group = df_with_preds.groupby(protected_attr)['Prediction'].apply(
+                    lambda x: pd.Series({
+                        'Poor': (x == 0).mean() * 100,
+                        'Standard': (x == 1).mean() * 100,
+                        'Good': (x == 2).mean() * 100
+                    })
+                ).unstack()
+
+                fig2 = px.bar(
+                    pred_by_group.reset_index(),
+                    x=protected_attr,
+                    y=['Poor', 'Standard', 'Good'],
+                    title=f"Model Predictions by {protected_attr} (%)",
+                    barmode='group'
+                )
+                st.plotly_chart(fig2, width='stretch')
+
+                # Bias metric
+                if len(attr_values) >= 2:
+                    good_rate_a = pred_by_group.loc[value_a, 'Good'] if value_a in pred_by_group.index else 0
+                    good_rate_b = pred_by_group.loc[value_b, 'Good'] if value_b in pred_by_group.index else 0
+
+                    st.metric(
+                        "Bias Gap (Good prediction rate)",
+                        f"{abs(good_rate_a - good_rate_b):.1f}%",
+                        delta=f"{value_a}: {good_rate_a:.1f}% vs {value_b}: {good_rate_b:.1f}%"
+                    )
+
+        # ========== Tab 2: Neuron Activations ==========
+        with tab2:
+            st.header("Neuron Activation Analysis")
+
+            manager = HookManager(model)
+            layer_names = [name for name in manager.list_layers() if 'layer' in name]
+
+            # Sample selection
+            sample_idx = st.slider("Select Sample", 0, len(df) - 1, 0)
+            sample_x = X[sample_idx:sample_idx+1].to(device)
+
+            st.write(f"**Sample {sample_idx}:** {protected_attr} = {df.iloc[sample_idx][protected_attr]}")
+
+            # Get activations
+            activations = get_all_activations(model, sample_x, layer_names)
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                if 'layer1' in activations:
+                    acts = activations['layer1'].cpu().numpy().flatten()
+                    st.subheader(f"Layer 1 ({len(acts)} neurons)")
+                    fig = px.bar(x=list(range(len(acts))), y=acts,
+                                labels={'x': 'Neuron', 'y': 'Activation'})
+                    st.plotly_chart(fig, width='stretch')
+
+            with col2:
+                if 'layer2' in activations:
+                    acts = activations['layer2'].cpu().numpy().flatten()
+                    st.subheader(f"Layer 2 ({len(acts)} neurons)")
+                    fig = px.bar(x=list(range(len(acts))), y=acts,
+                                labels={'x': 'Neuron', 'y': 'Activation'})
+                    st.plotly_chart(fig, width='stretch')
+
+            # Compare two groups
+            st.subheader(f"Activation Difference: {value_a} vs {value_b}")
+
+            mask_a = df[protected_attr] == value_a
+            mask_b = df[protected_attr] == value_b
+
+            if mask_a.sum() > 0 and mask_b.sum() > 0:
+                # Get mean activations for each group
+                X_a = X[mask_a.values].to(device)
+                X_b = X[mask_b.values].to(device)
+
+                acts_a = get_all_activations(model, X_a, layer_names)
+                acts_b = get_all_activations(model, X_b, layer_names)
+
+                for layer_name in layer_names:
+                    if layer_name in acts_a and layer_name in acts_b:
+                        mean_a = acts_a[layer_name].mean(dim=0).cpu().numpy()
+                        mean_b = acts_b[layer_name].mean(dim=0).cpu().numpy()
+                        diff = mean_a - mean_b
+
+                        st.write(f"**{layer_name}:** Mean activation difference")
+                        fig = px.bar(
+                            x=list(range(len(diff))),
+                            y=diff,
+                            labels={'x': 'Neuron', 'y': f'Mean({value_a}) - Mean({value_b})'},
+                            title=f"Neurons sensitive to {protected_attr}"
+                        )
+                        fig.add_hline(y=0, line_dash="dash", line_color="gray")
+                        st.plotly_chart(fig, width='stretch')
+
+        # ========== Tab 3: Circuit Discovery ==========
+        with tab3:
+            st.header("Bias Circuit Discovery")
+            st.markdown(f"""
+            Finding neurons that encode **{protected_attr}** by comparing activations
+            between **{value_a}** and **{value_b}** samples.
+            """)
+
+            if st.button("Discover Bias Circuit"):
+                mask_a = df[protected_attr] == value_a
+                mask_b = df[protected_attr] == value_b
+
+                if mask_a.sum() > 0 and mask_b.sum() > 0:
+                    # Take representative samples
+                    idx_a = mask_a.values.nonzero()[0][0]
+                    idx_b = mask_b.values.nonzero()[0][0]
+
+                    x_a = X[idx_a:idx_a+1].to(device)
+                    x_b = X[idx_b:idx_b+1].to(device)
+
+                    circuit = discover_circuits(model, x_a, x_b, layer_names, top_k=5)
+
+                    st.write(f"**Total Circuit Importance:** {circuit.total_importance:.4f}")
+                    st.write("**Identified Bias Neurons:**")
+
+                    for neuron in circuit.neurons[:15]:
+                        st.write(
+                            f"- **{neuron.layer_name}** Neuron {neuron.neuron_index}: "
+                            f"importance = {neuron.importance_score:.4f}"
+                        )
+
+                    st.session_state['bias_circuit'] = circuit
+                    st.session_state['bias_attr'] = protected_attr
+                    st.success("Circuit saved! Go to 'Ablation & Pruning' tab.")
+                else:
+                    st.error("Not enough samples in one of the groups.")
+
+        # ========== Tab 4: Ablation & Pruning ==========
+        with tab4:
+            st.header("Ablation Study & Safety Pruning")
+
+            if 'bias_circuit' not in st.session_state:
+                st.warning("Please discover the bias circuit first (Tab 3).")
+            else:
+                circuit = st.session_state['bias_circuit']
+
+                # Group neurons by layer
+                layer_neurons = {}
+                for n in circuit.neurons:
+                    if n.layer_name not in layer_neurons:
+                        layer_neurons[n.layer_name] = []
+                    layer_neurons[n.layer_name].append(n.neuron_index)
+
+                st.subheader("Discovered Bias Neurons")
+                for layer, neurons in layer_neurons.items():
+                    st.write(f"**{layer}:** {neurons}")
+
+                # Ablation study
+                st.subheader("Ablation Study")
+                ablate_layer = st.selectbox("Layer to ablate", list(layer_neurons.keys()))
+
+                if ablate_layer:
+                    neurons_to_ablate = st.multiselect(
+                        "Neurons to ablate",
+                        layer_neurons[ablate_layer],
+                        default=layer_neurons[ablate_layer][:3]
+                    )
+
+                    if neurons_to_ablate and st.button("Run Ablation"):
+                        mask_a = df[protected_attr] == value_a
+                        mask_b = df[protected_attr] == value_b
+
+                        # Get predictions before and after ablation
+                        results = []
+
+                        for idx in range(min(200, len(df))):
+                            x = X[idx:idx+1].to(device)
+                            group = df.iloc[idx][protected_attr]
+
+                            with torch.no_grad():
+                                orig_pred = model(x).softmax(dim=1)[0, 2].item()  # P(Good)
+
+                            ablated_out = run_ablation(model, x, ablate_layer, neurons_to_ablate)
+                            ablated_pred = ablated_out.softmax(dim=1)[0, 2].item()
+
+                            results.append({
+                                'Group': group,
+                                'Original': orig_pred,
+                                'Ablated': ablated_pred,
+                                'Diff': ablated_pred - orig_pred
+                            })
+
+                        results_df = pd.DataFrame(results)
+
+                        # Show scatter plot
+                        fig = px.scatter(
+                            results_df,
+                            x='Original',
+                            y='Ablated',
+                            color='Group',
+                            title="Original vs Ablated P(Good)"
+                        )
+                        fig.add_trace(go.Scatter(
+                            x=[0, 1], y=[0, 1],
+                            mode='lines', name='No Change',
+                            line=dict(dash='dash')
+                        ))
+                        st.plotly_chart(fig, width='stretch')
+
+                        # Show effect by group
+                        st.subheader("Average Effect by Group")
+                        effect_by_group = results_df.groupby('Group')['Diff'].mean()
+                        st.bar_chart(effect_by_group)
+
+                # Safety Pruning
+                st.subheader("Safety Pruning")
+                prune_layer = st.selectbox("Layer to prune", list(layer_neurons.keys()), key="prune_layer")
+
+                if prune_layer:
+                    prune_neurons = st.multiselect(
+                        "Neurons to prune permanently",
+                        layer_neurons[prune_layer],
+                        default=layer_neurons[prune_layer][:2],
+                        key="prune_neurons"
+                    )
+
+                    if prune_neurons and st.button("Apply Pruning"):
+                        pruned_model, result = prune_biased_neurons(
+                            model, prune_layer, prune_neurons, copy=True
+                        )
+
+                        st.write(result.summary())
+
+                        # Evaluate impact
+                        with torch.no_grad():
+                            orig_preds = model(X.to(device)).argmax(dim=1).cpu()
+                            pruned_preds = pruned_model(X.to(device)).argmax(dim=1).cpu()
+
+                        orig_acc = (orig_preds == y).float().mean().item()
+                        pruned_acc = (pruned_preds == y).float().mean().item()
+
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.metric("Original Accuracy", f"{orig_acc:.2%}")
+                        with col2:
+                            st.metric("Pruned Accuracy", f"{pruned_acc:.2%}")
+                        with col3:
+                            st.metric("Accuracy Drop", f"{orig_acc - pruned_acc:.2%}")
+
+                        # Bias change
+                        df_with_preds = df.copy()
+                        df_with_preds['Orig_Pred'] = orig_preds.numpy()
+                        df_with_preds['Pruned_Pred'] = pruned_preds.numpy()
+
+                        orig_good_a = (df_with_preds[df_with_preds[protected_attr] == value_a]['Orig_Pred'] == 2).mean()
+                        orig_good_b = (df_with_preds[df_with_preds[protected_attr] == value_b]['Orig_Pred'] == 2).mean()
+                        pruned_good_a = (df_with_preds[df_with_preds[protected_attr] == value_a]['Pruned_Pred'] == 2).mean()
+                        pruned_good_b = (df_with_preds[df_with_preds[protected_attr] == value_b]['Pruned_Pred'] == 2).mean()
+
+                        orig_gap = abs(orig_good_a - orig_good_b)
+                        pruned_gap = abs(pruned_good_a - pruned_good_b)
+
+                        st.subheader("Fairness Impact")
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.metric("Original Bias Gap", f"{orig_gap:.2%}")
+                        with col2:
+                            st.metric("Pruned Bias Gap", f"{pruned_gap:.2%}",
+                                     delta=f"{pruned_gap - orig_gap:.2%}",
+                                     delta_color="inverse")
+
+    except FileNotFoundError as e:
+        st.error(f"Dataset not found: {e}")
+        st.info("Please ensure the Credit Score dataset is in data/raw/CreditScore/")
+    except Exception as e:
+        st.error(f"Error loading data: {e}")
+        import traceback
+        st.code(traceback.format_exc())
