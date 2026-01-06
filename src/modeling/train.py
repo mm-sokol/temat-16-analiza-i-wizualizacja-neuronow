@@ -1,10 +1,10 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from config import ProjectConfig
-from modeling.architecture import InterpretableMLP
-from dataset import MNISTDataModule
-from plots import VisualizationEngine
+from src.config import ProjectConfig
+from src.modeling.architecture import InterpretableMLP
+from src.dataset import MNISTDataModule
+from src.plots import VisualizationEngine
 
 
 class ModelTrainer:
