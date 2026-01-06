@@ -2,7 +2,7 @@ import torch
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 from typing import Tuple
-from config import ProjectConfig
+from src.config import ProjectConfig
 
 
 class MNISTDataModule:
