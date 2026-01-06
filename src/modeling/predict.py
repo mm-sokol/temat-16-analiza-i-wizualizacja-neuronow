@@ -1,9 +1,9 @@
 import torch
-from config import ProjectConfig
-from modeling.architecture import InterpretableMLP
-from features import interpreter_factory
-from plots import VisualizationEngine
-from dataset import MNISTDataModule
+from src.config import ProjectConfig
+from src.modeling.architecture import InterpretableMLP
+from src.features import interpreter_factory
+from src.plots import VisualizationEngine
+from src.dataset import MNISTDataModule
 
 
 class InferenceRunner:
