@@ -36,7 +36,11 @@ from src.interpretability.patching import activation_patching, causal_trace
 from src.interpretability.pruning import prune_biased_neurons, evaluate_pruning_impact
 
 from src.streamlit_tabs.activations import activations_tab
-from src.streamlit_tabs.circut_detection import circut_detection_tab, safety_pruning
+from src.streamlit_tabs.circut_detection import (
+    circut_detection_tab,
+    safety_pruning,
+    circut_detection_on_images_tab,
+)
 from src.streamlit_tabs.ablation import ablation_tab, ablation_on_images_tab
 
 st.set_page_config(page_title="Neural Microscope", layout="wide")
@@ -300,7 +304,9 @@ elif demo_mode == "MNIST (Trained Models)":
         # ========== Tab 2: Bias Circuit Detection ==========
         with tab2:
             st.error(f"Not implemented yet.")
-            # circut_detection_tab(model, sample_image, input_features, layer_names)
+            # circut_detection_on_images_tab(
+            #     model, sample_image, 2, layer_names, layer_prefix="fc"
+            # )
 
         # ========== Tab 3: Ablation Study ==========
         with tab3:
