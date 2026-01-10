@@ -102,6 +102,37 @@ def ablation_tab(model, df, activations, layer_names):
         st.bar_chart(avg_diff_by_zip)
 
 
+def get_abltaion_results(model, loader, device, selected_layer, neurons_to_ablate):
+
+    original_probs = []
+    ablated_probs = []
+    targets = []
+    progress = st.progress(0)
+    for idx, (images, labels) in enumerate(loader):
+        images = images.to(device)
+        labels = labels.to(device)
+        print(idx, images.shape)
+        with torch.no_grad():
+            print("Here")
+            orig_prob = model(images)
+            orig_prob = torch.softmax(orig_prob, dim=1).squeeze()
+            print("Here1", orig_prob.shape)
+        ablated_output = run_ablation(model, images, selected_layer, neurons_to_ablate)
+        print("Here2")
+        abl_prob = ablated_output
+        abl_prob = torch.softmax(abl_prob, dim=1).squeeze()
+        original_probs.append(orig_prob)
+        ablated_probs.append(abl_prob)
+        targets.append(labels)
+        progress.progress((idx + 1) / len(loader))
+
+    all_original_probs = torch.cat(original_probs, dim=0)
+    all_ablated_probs = torch.cat(ablated_probs, dim=0)
+    all_labels = torch.cat(targets, dim=0)
+
+    return all_original_probs, all_ablated_probs, all_labels
+
+
 def ablation_on_images_tab(model, test_loader, activations, layer_names):
     st.header("Ablation Study")
     st.info("Using run_ablation from src.interpretability.ablation")
@@ -110,24 +141,43 @@ def ablation_on_images_tab(model, test_loader, activations, layer_names):
 
     neurons_to_ablate, selected_layer = get_nerurons_to_ablate(layer_names, activations)
 
+    if "ablation_results" not in st.session_state:
+        st.session_state.ablation_results = None
+
     if neurons_to_ablate and st.button("Run Ablation Study"):
+        st.session_state.ablation_results = get_abltaion_results(
+            model, test_loader, device, selected_layer, neurons_to_ablate
+        )
 
-        original_probs = []
-        ablated_probs = []
-        progress = st.progress(0)
+    if st.session_state.ablation_results is not None:
+        all_original_probs, all_ablated_probs, all_labels = (
+            st.session_state.ablation_results
+        )
 
-        for idx, (images, labels) in enumerate(test_loader):
-            images = images.to(device)
-            labels = labels.to(device)
+        st.subheader("Ablation Results")
 
-            with torch.no_grad():
-                orig_prob = model(images).item()
+        choice = st.radio(
+            "Select a number",
+            options=list(range(1, all_original_probs.shape[1] + 1)),
+            horizontal=True,
+            key="ablation_choice",
+        )
 
-            ablated_output = run_ablation(
-                model, images, selected_layer, neurons_to_ablate
+        fig = px.scatter(
+            x=all_original_probs[:, choice - 1].numpy(),
+            y=all_ablated_probs[:, choice - 1].numpy(),
+            color=all_labels.numpy(),
+            title="Original vs Ablated Predictions",
+        )
+
+        fig.add_trace(
+            go.Scatter(
+                x=[0, 1],
+                y=[0, 1],
+                mode="lines",
+                name="No Change",
+                line=dict(dash="dash", color="lightgray"),
             )
-            abl_prob = ablated_output.item()
+        )
 
-            original_probs.append(orig_prob)
-            ablated_probs.append(abl_prob)
-            progress.progress((idx + 1) / len(test_loader))
+        st.plotly_chart(fig, use_container_width=True)
