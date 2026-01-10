@@ -101,6 +101,92 @@ def circut_detection_tab(model, input_tensor, input_features, layer_names):
         st.success("Circuit saved! Go to 'Safety Pruning' tab to apply interventions.")
 
 
+def circut_detection_on_images_tab(
+    model,
+    input_tensor,
+    input_target,
+    layer_names,
+    optim_steps=300,
+    layer_prefix="layer",
+):
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    couterfactual_img = input_tensor.clone().detach().requires_grad_(True)
+    optimizer = torch.optim.Adam([couterfactual_img], lr=1e-2)
+
+    for _ in range(optim_steps):
+        optimizer.zero_grad()
+        logits = model(couterfactual_img)
+        target_loss = -logits[:, input_target].mean()
+        proximity_loss = torch.norm(couterfactual_img - input_tensor)
+
+        regularization_loss = torch.mean(
+            torch.abs(couterfactual_img[:, :, :, :-1] - couterfactual_img[:, :, :, 1:])
+        )
+
+        loss = target_loss + 0.01 * proximity_loss + 0.001 * regularization_loss
+        loss.backward()
+        optimizer.step()
+
+        with torch.no_grad():
+            couterfactual_img.clamp_(0, 1)
+
+    couterfactual_img = couterfactual_img.detach().to(device)
+
+    orig_activations = get_all_activations(model, input_tensor, layer_names)
+    cf_activations = get_all_activations(model, couterfactual_img, layer_names)
+
+    col_d1, col_d2 = st.columns(2)
+
+    with col_d1:
+        if f"{layer_prefix}1" in orig_activations:
+            l1_acts = orig_activations[f"{layer_prefix}1"].cpu().numpy().flatten()
+            cf_l1_acts = cf_activations[f"{layer_prefix}1"].cpu().numpy().flatten()
+            diff_l1 = cf_l1_acts - l1_acts
+            st.subheader("Layer 1 Sensitivity (Bias Neurons)")
+            fig_d1 = px.bar(
+                x=list(range(len(diff_l1))),
+                y=diff_l1,
+                labels={"x": "Neuron Index", "y": "Change in Activation"},
+                title="Change when Zip Code is Flipped",
+            )
+            st.plotly_chart(fig_d1, width="stretch")
+
+    with col_d2:
+        if f"{layer_prefix}2" in orig_activations:
+            l2_acts = orig_activations[f"{layer_prefix}2"].cpu().numpy().flatten()
+            cf_l2_acts = cf_activations[f"{layer_prefix}2"].cpu().numpy().flatten()
+            diff_l2 = cf_l2_acts - l2_acts
+            st.subheader("Layer 2 Sensitivity (Bias Neurons)")
+            fig_d2 = px.bar(
+                x=list(range(len(diff_l2))),
+                y=diff_l2,
+                labels={"x": "Neuron Index", "y": "Change in Activation"},
+                title="Change when Zip Code is Flipped",
+            )
+            st.plotly_chart(fig_d2, width="stretch")
+
+    st.info(
+        "Neurons with large bars are strongly coupled to the Zip Code feature. "
+        "These are candidates for pruning to improve fairness."
+    )
+
+    # Circuit discovery using generic module
+    st.subheader("Automated Circuit Discovery")
+    if st.button("Discover Bias Circuit"):
+        circuit = discover_circuits(
+            model, input_tensor, couterfactual_img, layer_names, top_k=5
+        )
+        st.write(f"**Total Circuit Importance:** {circuit.total_importance:.4f}")
+        st.write("**Identified Neurons:**")
+        for neuron in circuit.neurons[:10]:
+            st.write(
+                f"- **{neuron.layer_name}** Neuron {neuron.neuron_index}: "
+                f"importance={neuron.importance_score:.4f}"
+            )
+        st.session_state["bias_circuit"] = circuit
+        st.success("Circuit saved! Go to 'Safety Pruning' tab to apply interventions.")
+
 def safety_pruning(model, input_features, df):
     st.header("Safety Pruning")
     st.info("Permanently remove biased neurons using src.interpretability.pruning")
