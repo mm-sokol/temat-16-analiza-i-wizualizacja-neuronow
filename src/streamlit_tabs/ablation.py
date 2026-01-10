@@ -169,6 +169,17 @@ def ablation_on_images_tab(model, test_loader, activations, layer_names):
             color=all_labels.numpy(),
             title="Original vs Ablated Predictions",
         )
+        fig.update_layout(
+            xaxis_title="Original probability",
+            yaxis_title="Ablated probability",
+        )
+        fig.update_traces(
+            hovertemplate=(
+                "Original: %{x:.3f}<br>"
+                "Ablated: %{y:.3f}<br>"
+                "Label: %{marker.color}<extra></extra>"
+            )
+        )
 
         fig.add_trace(
             go.Scatter(
