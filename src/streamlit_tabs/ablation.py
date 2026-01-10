@@ -193,8 +193,17 @@ def ablation_on_images_tab(model, test_loader, activations, layer_names):
 
         st.plotly_chart(fig, use_container_width=True)
 
-        st.subheader("Average Effect of ablation")
+        st.subheader("Average Effect of Ablation")
 
         all_differences = all_ablated_probs - all_original_probs
         diff_mean = all_differences.mean(dim=0)
-        st.bar_chart(diff_mean)
+
+        fig = px.bar(
+            x=np.arange(len(diff_mean)),
+            y=diff_mean,
+            labels={
+                "x": "Label index",
+                "y": "Mean difference of model output",
+            },
+        )
+        st.plotly_chart(fig, use_container_width=True)
