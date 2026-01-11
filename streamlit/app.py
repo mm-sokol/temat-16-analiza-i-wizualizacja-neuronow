@@ -303,10 +303,14 @@ elif demo_mode == "MNIST (Trained Models)":
 
         # ========== Tab 2: Bias Circuit Detection ==========
         with tab2:
-            st.error(f"Not implemented yet.")
-            # circut_detection_on_images_tab(
-            #     model, sample_image, 2, layer_names, layer_prefix="fc"
-            # )
+            # st.error(f"Not implemented yet.")
+            circut_detection_on_images_tab(
+                model,
+                images[sample_idx],
+                sample_label,
+                layer_names=layer_names,
+                layer_prefix="fc",
+            )
 
         # ========== Tab 3: Ablation Study ==========
         with tab3:
