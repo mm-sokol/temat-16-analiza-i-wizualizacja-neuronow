@@ -464,7 +464,7 @@ def safety_pruning_on_images_tab(model, input_image, test_loader):
                 )
                 st.write(result.summary())
 
-                st.subheader("Fairness Impact")
+                st.subheader("Single Image Impact")
 
                 st.session_state.couterfactual = get_couterfactual(
                     model, input_image, cf_label, optim_steps=300
@@ -503,12 +503,66 @@ def safety_pruning_on_images_tab(model, input_image, test_loader):
                     )
                     st.plotly_chart(fig_d2, width="stretch")
 
-                # with col3:
-                #     old_gap = torch.norm(orig_y - orig_cf, p=2)
-                #     new_gap = torch.norm(pruned_y - pruned_cf, p=2)
-                #     st.metric(
-                #         "L2 Distance from classificaiton to counterfactual classifiaction",
-                #         f"{new_gap:.3f}",
-                #         delta=f"{new_gap - old_gap:.3f}",
-                #         delta_color="inverse",
-                #     )
+                st.subheader("Test Set Impact")
+                original_probs = []
+                pruned_probs = []
+                targets = []
+
+                correct_orig = 0
+                correct_pruned = 0
+                total = 0
+                progress = st.progress(0)
+                for idx, (images, labels) in enumerate(test_loader):
+
+                    images = images.to(device)
+                    labels = labels.to(device)
+
+                    orig_logits = model(images)
+                    orig_class = orig_logits.argmax(dim=1)
+
+                    pruned_logits = pruned_model(images)
+                    pruned_class = pruned_logits.argmax(dim=1)
+
+                    original_probs.append(orig_class)
+                    pruned_probs.append(pruned_class)
+                    targets.append(labels)
+
+                    correct_orig += (orig_class == labels).sum().item()
+                    correct_pruned += (pruned_class == labels).sum().item()
+                    total += labels.size(0)
+                    progress.progress((idx + 1) / len(test_loader))
+
+                orig_overall_accuracy = correct_orig / total
+                pruned_overall_accuracy = correct_pruned / total
+
+                original = torch.cat(original_probs, dim=0)
+                pruned = torch.cat(pruned_probs, dim=0)
+                all_labels = torch.cat(targets, dim=0)
+
+                fig = px.scatter(
+                    x=original,
+                    y=pruned,
+                    color=all_labels,
+                    title="Original vs Pruned Predictions",
+                    labels={
+                        "x": "Original Classification",
+                        "y": "After Pruning",
+                        "color": "Label",
+                    },
+                )
+                fig.add_trace(
+                    go.Scatter(
+                        x=[0, 10],
+                        y=[0, 10],
+                        mode="lines",
+                        name="No Change",
+                        line=dict(dash="dash"),
+                    )
+                )
+                st.plotly_chart(fig, width="stretch")
+                # Accuracy comparison
+                st.write(f"**Original Accuracy:** {orig_overall_accuracy:.4f}")
+                st.write(f"**Pruned Accuracy:** {pruned_overall_accuracy:.4f}")
+                st.write(
+                    f"**Accuracy Drop:** {orig_overall_accuracy - pruned_overall_accuracy:.4f}"
+                )
