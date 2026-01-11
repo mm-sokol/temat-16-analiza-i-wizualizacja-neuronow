@@ -101,40 +101,102 @@ def circut_detection_tab(model, input_tensor, input_features, layer_names):
         st.success("Circuit saved! Go to 'Safety Pruning' tab to apply interventions.")
 
 
-def circut_detection_on_images_tab(
+def get_couterfactual(
     model,
-    input_tensor,
-    input_target,
-    layer_names,
-    optim_steps=300,
-    layer_prefix="layer",
+    original_img,
+    target_label,
+    optim_steps,
+    l2_reg_param=0.01,
+    l1_reg_param=0.005,
 ):
-    device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    couterfactual_img = input_tensor.clone().detach().requires_grad_(True)
+    couterfactual_img = original_img.clone().detach().requires_grad_(True)
     optimizer = torch.optim.Adam([couterfactual_img], lr=1e-2)
 
     for _ in range(optim_steps):
         optimizer.zero_grad()
-        logits = model(couterfactual_img)
-        target_loss = -logits[:, input_target].mean()
-        proximity_loss = torch.norm(couterfactual_img - input_tensor)
 
-        regularization_loss = torch.mean(
-            torch.abs(couterfactual_img[:, :, :, :-1] - couterfactual_img[:, :, :, 1:])
+        logits = model(couterfactual_img.view(1, -1))
+
+        orig_class = logits.argmax(dim=1).item()
+
+        m = 0.2
+        target_loss = torch.relu(
+            logits[:, orig_class] - logits[:, target_label] + m
+        ).mean()
+
+        # target_loss = -logits[:, target_label].mean()
+
+        proximity_loss = torch.norm(couterfactual_img - original_img, p=2)
+
+        # 1 pixel shift in the horizontal direction
+        # 1 pixel shift in the hertical direction
+        # regularization_loss = torch.mean(
+        #     torch.abs(couterfactual_img[:, :, :-1] - couterfactual_img[:, :, 1:])
+        # ) + torch.mean(
+        #     torch.abs(couterfactual_img[:, :-1, :] - couterfactual_img[:, 1:, :])
+        # )
+        regularization_loss = torch.norm(couterfactual_img - original_img, p=1)
+
+        loss = (
+            target_loss
+            + l2_reg_param * proximity_loss
+            + l1_reg_param * regularization_loss
         )
-
-        loss = target_loss + 0.01 * proximity_loss + 0.001 * regularization_loss
         loss.backward()
         optimizer.step()
 
         with torch.no_grad():
             couterfactual_img.clamp_(0, 1)
 
-    couterfactual_img = couterfactual_img.detach().to(device)
+    return couterfactual_img
 
-    orig_activations = get_all_activations(model, input_tensor, layer_names)
-    cf_activations = get_all_activations(model, couterfactual_img, layer_names)
+
+def circut_detection_on_images_tab(
+    model,
+    original_img,
+    original_label,
+    layer_names,
+    optim_steps=300,
+    layer_prefix="layer",
+):
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+
+        target_label = st.radio(
+            "Select target class for counterfactual: ",
+            options=list(range(1, 11)),
+            horizontal=True,
+            key="target_label",
+        )
+        target_label -= 1
+
+        st.session_state.couterfactual = get_couterfactual(
+            model,
+            original_img,
+            target_label,
+            optim_steps,
+        )
+
+        couterfactual_img = st.session_state.couterfactual
+        couterfactual_img = couterfactual_img.detach().to(device)
+
+        orig_activations = get_all_activations(
+            model, original_img.view(1, -1), layer_names
+        )
+        cf_activations = get_all_activations(
+            model, couterfactual_img.view(1, -1), layer_names
+        )
+
+    with col2:
+        st.image(
+            couterfactual_img.view(28, 28).squeeze().detach().cpu().numpy(),
+            caption="Counterfactual image",
+            clamp=True,
+        )
 
     col_d1, col_d2 = st.columns(2)
 
@@ -148,7 +210,7 @@ def circut_detection_on_images_tab(
                 x=list(range(len(diff_l1))),
                 y=diff_l1,
                 labels={"x": "Neuron Index", "y": "Change in Activation"},
-                title="Change when Zip Code is Flipped",
+                title="Activation change after switching to couterfactual",
             )
             st.plotly_chart(fig_d1, width="stretch")
 
@@ -162,20 +224,20 @@ def circut_detection_on_images_tab(
                 x=list(range(len(diff_l2))),
                 y=diff_l2,
                 labels={"x": "Neuron Index", "y": "Change in Activation"},
-                title="Change when Zip Code is Flipped",
+                title="Activation change after switching to couterfactual",
             )
             st.plotly_chart(fig_d2, width="stretch")
 
     st.info(
-        "Neurons with large bars are strongly coupled to the Zip Code feature. "
-        "These are candidates for pruning to improve fairness."
+        "Neurons with large bars are strongly changed by passing couterfactual image."
+        "These are candidates for pruning."
     )
 
     # Circuit discovery using generic module
     st.subheader("Automated Circuit Discovery")
     if st.button("Discover Bias Circuit"):
         circuit = discover_circuits(
-            model, input_tensor, couterfactual_img, layer_names, top_k=5
+            model, original_img, couterfactual_img, layer_names, top_k=5
         )
         st.write(f"**Total Circuit Importance:** {circuit.total_importance:.4f}")
         st.write("**Identified Neurons:**")
@@ -186,6 +248,7 @@ def circut_detection_on_images_tab(
             )
         st.session_state["bias_circuit"] = circuit
         st.success("Circuit saved! Go to 'Safety Pruning' tab to apply interventions.")
+
 
 def safety_pruning(model, input_features, df):
     st.header("Safety Pruning")
