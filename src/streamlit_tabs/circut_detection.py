@@ -250,7 +250,7 @@ def circut_detection_on_images_tab(
         st.success("Circuit saved! Go to 'Safety Pruning' tab to apply interventions.")
 
 
-def safety_pruning(model, input_features, df):
+def print_safety_pruning_info():
     st.header("Safety Pruning")
     st.info("Permanently remove biased neurons using src.interpretability.pruning")
     st.markdown(
@@ -259,6 +259,12 @@ def safety_pruning(model, input_features, df):
         to improve model fairness while minimizing accuracy loss.
         """
     )
+
+
+def safety_pruning(model, input_features, df):
+
+    print_safety_pruning_info()
+
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     if "bias_circuit" not in st.session_state:
@@ -319,6 +325,7 @@ def safety_pruning(model, input_features, df):
                     .unsqueeze(0)
                     .to(device)
                 )
+
                 with torch.no_grad():
                     orig_adv = model(x_adv).item()
                     orig_dis = model(x_dis).item()
@@ -401,3 +408,107 @@ def safety_pruning(model, input_features, df):
                 st.write(f"**Original Accuracy:** {orig_acc:.4f}")
                 st.write(f"**Pruned Accuracy:** {pruned_acc:.4f}")
                 st.write(f"**Accuracy Drop:** {orig_acc - pruned_acc:.4f}")
+
+
+def safety_pruning_on_images_tab(model, input_image, test_loader):
+
+    print_safety_pruning_info()
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    if "bias_circuit" not in st.session_state:
+        st.warning(
+            "No bias circuit discovered yet. Go to 'Bias Circuit Detection' tab first."
+        )
+    else:
+        circuit = st.session_state["bias_circuit"]
+        layer_neurons = {}
+        for n in circuit.neurons:
+            if n.layer_name not in layer_neurons:
+                layer_neurons[n.layer_name] = []
+            layer_neurons[n.layer_name].append((n.neuron_index, n.importance_score))
+
+        st.subheader("Discovered Bias Neurons")
+        for layer, neurons in layer_neurons.items():
+            st.write(f"**{layer}:** {[n[0] for n in neurons]}")
+
+        prune_layer = st.selectbox(
+            "Layer to prune", list(layer_neurons.keys()), key="prune_layer"
+        )
+
+        if prune_layer:
+            available_neurons = [n[0] for n in layer_neurons[prune_layer]]
+            prune_neurons = st.multiselect(
+                "Neurons to prune",
+                available_neurons,
+                default=(
+                    available_neurons[:2]
+                    if len(available_neurons) >= 2
+                    else available_neurons
+                ),
+                key="prune_neurons",
+            )
+
+            cf_label = st.radio(
+                "Select target class for counterfactual: ",
+                options=list(range(1, 11)),
+                horizontal=True,
+                key="cf_label",
+            )
+            cf_label -= 1
+
+            if prune_neurons and st.button("Apply Pruning"):
+
+                pruned_model, result = prune_biased_neurons(
+                    model, prune_layer, prune_neurons, copy=True
+                )
+                st.write(result.summary())
+
+                st.subheader("Fairness Impact")
+
+                st.session_state.couterfactual = get_couterfactual(
+                    model, input_image, cf_label, optim_steps=300
+                )
+
+                couterfactual_img = st.session_state.couterfactual
+                couterfactual_img = couterfactual_img.detach().to(device)
+
+                with torch.no_grad():
+                    orig_y = model(input_image.view(1, -1))
+                    orig_cf = model(couterfactual_img.view(1, -1))
+                    pruned_y = pruned_model(input_image.view(1, -1))
+                    pruned_cf = pruned_model(couterfactual_img.view(1, -1))
+
+                orig_y = torch.softmax(orig_y, dim=1).squeeze()
+                orig_cf = torch.softmax(orig_cf, dim=1).squeeze()
+                pruned_y = torch.softmax(pruned_y, dim=1).squeeze()
+                pruned_cf = torch.softmax(pruned_cf, dim=1).squeeze()
+
+                col1, col2 = st.columns(2)
+                with col1:
+                    fig_d2 = px.bar(
+                        x=list(range(1, len(orig_y) + 1)),
+                        y=pruned_y - orig_y,
+                        labels={"x": "Label", "y": "Change in Probability"},
+                        title="Classification output difference between original and pruned model",
+                    )
+                    st.plotly_chart(fig_d2, width="stretch")
+
+                with col2:
+                    fig_d2 = px.bar(
+                        x=list(range(1, len(orig_cf) + 1)),
+                        y=pruned_cf - orig_cf,
+                        labels={"x": "Label", "y": "Change in Probability"},
+                        title="Difference between original and pruned model on counterfactual image",
+                    )
+                    st.plotly_chart(fig_d2, width="stretch")
+
+                # with col3:
+                #     old_gap = torch.norm(orig_y - orig_cf, p=2)
+                #     new_gap = torch.norm(pruned_y - pruned_cf, p=2)
+                #     st.metric(
+                #         "L2 Distance from classificaiton to counterfactual classifiaction",
+                #         f"{new_gap:.3f}",
+                #         delta=f"{new_gap - old_gap:.3f}",
+                #         delta_color="inverse",
+                #     )

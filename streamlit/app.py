@@ -40,6 +40,7 @@ from src.streamlit_tabs.circut_detection import (
     circut_detection_tab,
     safety_pruning,
     circut_detection_on_images_tab,
+    safety_pruning_on_images_tab,
 )
 from src.streamlit_tabs.ablation import ablation_tab, ablation_on_images_tab
 
@@ -320,8 +321,8 @@ elif demo_mode == "MNIST (Trained Models)":
 
         # ========== Tab 4: Safety Pruning ==========
         with tab4:
-            st.error(f"Not implemented yet.")
-            # safety_pruning(model, sample_image, df)
+            # st.error(f"Not implemented yet.")
+            safety_pruning_on_images_tab(model, images[sample_idx], test_loader)
 
     except FileNotFoundError:
         st.error(f"Model file not found: {model_path}")
