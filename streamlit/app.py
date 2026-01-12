@@ -120,11 +120,12 @@ if demo_mode == "Credit Scoring (Synthetic)":
     st.divider()
 
     # Create tabs
-    tab1, tab2, tab3, tab4 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "Activations",
         "Bias Circuit Detection",
         "Ablation Study",
-        "Safety Pruning"
+        "Safety Pruning",
+        "Experiments"
     ])
 
     # ========== Tab 1: Activations ==========
@@ -477,6 +478,297 @@ if demo_mode == "Credit Scoring (Synthetic)":
                     st.write(f"**Original Accuracy:** {orig_acc:.4f}")
                     st.write(f"**Pruned Accuracy:** {pruned_acc:.4f}")
                     st.write(f"**Accuracy Drop:** {orig_acc - pruned_acc:.4f}")
+
+    # ========== Tab 5: Experiments ==========
+    with tab5:
+        st.header("Validation Experiments")
+        st.markdown("""
+        **Purpose**: Before trusting interpretability findings, we must validate that our tools
+        actually work. These experiments use the synthetic data where we **know the ground truth**
+        (Zip Code weight = 1.5, Income = 0.5, Noise = 0.0).
+        """)
+
+        experiment = st.selectbox(
+            "Select Experiment",
+            ["Study 1: Multi-Seed Consistency", "Study 2: Feature Attribution", "Study 3: Circuit Completeness"]
+        )
+
+        # ------ Study 1: Multi-Seed Consistency ------
+        if experiment == "Study 1: Multi-Seed Consistency":
+            st.subheader("Do the same bias neurons appear across different training runs?")
+            st.markdown("""
+            If our tools are reliable, they should identify **consistent** neurons across models
+            trained with different random seeds. Random results = unreliable tools.
+            """)
+
+            n_runs = st.slider("Number of training runs", 3, 10, 5)
+            threshold = st.slider("Activation difference threshold", 0.1, 1.0, 0.3)
+
+            if st.button("Run Multi-Seed Experiment", key="study1"):
+                results = {"layer1": {}, "layer2": {}}
+                progress = st.progress(0)
+
+                for run_idx in range(n_runs):
+                    # Train model with different seed
+                    run_seed = seed + run_idx * 100
+                    run_df = generate_synthetic_data(n_samples=n_samples, seed=run_seed)
+                    run_model = train_model(run_df, epochs=200, device=device)
+
+                    # Get a sample and its counterfactual
+                    features = ['Income', 'CreditHistory', 'Age', 'ZipCode', 'RandomNoise']
+                    sample = run_df[features].iloc[0].values.astype(np.float32)
+                    cf_sample = sample.copy()
+                    cf_sample[3] = 1 - cf_sample[3]  # Flip ZipCode
+
+                    sample_t = torch.tensor(sample).unsqueeze(0).to(device)
+                    cf_t = torch.tensor(cf_sample).unsqueeze(0).to(device)
+
+                    # Get activations for both
+                    layer_names = ['layer1', 'layer2']
+                    orig_acts = get_all_activations(run_model, sample_t, layer_names)
+                    cf_acts = get_all_activations(run_model, cf_t, layer_names)
+
+                    # Find neurons with large activation difference
+                    for layer in layer_names:
+                        diff = (cf_acts[layer] - orig_acts[layer]).abs().cpu().numpy().flatten()
+                        biased_neurons = np.where(diff > threshold)[0]
+                        for neuron in biased_neurons:
+                            if neuron not in results[layer]:
+                                results[layer][neuron] = 0
+                            results[layer][neuron] += 1
+
+                    progress.progress((run_idx + 1) / n_runs)
+
+                # Display results
+                st.success(f"Completed {n_runs} training runs")
+
+                for layer in ['layer1', 'layer2']:
+                    st.subheader(f"{layer} - Neuron Consistency")
+                    if results[layer]:
+                        neurons = list(results[layer].keys())
+                        counts = list(results[layer].values())
+                        consistency = [c / n_runs for c in counts]
+
+                        fig = px.bar(
+                            x=[f"N{n}" for n in neurons],
+                            y=consistency,
+                            labels={'x': 'Neuron', 'y': f'Appearance Rate (out of {n_runs} runs)'},
+                            title=f"{layer}: How often each neuron was flagged as biased"
+                        )
+                        fig.add_hline(y=0.8, line_dash="dash", line_color="green",
+                                     annotation_text="80% = Reliable")
+                        st.plotly_chart(fig, use_container_width=True)
+
+                        # Summary
+                        reliable = [n for n, c in zip(neurons, consistency) if c >= 0.8]
+                        if reliable:
+                            st.success(f"Reliable bias neurons (>=80%): {reliable}")
+                        else:
+                            st.warning("No neurons appeared in >=80% of runs. Tools may need calibration.")
+                    else:
+                        st.info(f"No neurons exceeded threshold in {layer}")
+
+        # ------ Study 2: Feature Attribution ------
+        elif experiment == "Study 2: Feature Attribution":
+            st.subheader("Does ablation correctly rank feature importance?")
+            st.markdown("""
+            **Ground truth weights**: ZipCode=1.5, Income=0.5, CreditHistory=0.3, Age=0.2, Noise=0.0
+
+            We test: for each feature, which neurons encode it? Ablating those neurons should
+            affect predictions proportionally to the feature's true importance.
+            """)
+
+            if st.button("Run Feature Attribution Study", key="study2"):
+                features = ['Income', 'CreditHistory', 'Age', 'ZipCode', 'RandomNoise']
+                true_weights = {'Income': 0.5, 'CreditHistory': 0.3, 'Age': 0.2, 'ZipCode': 1.5, 'RandomNoise': 0.0}
+
+                feature_importance = {}
+                progress = st.progress(0)
+
+                for feat_idx, feat_name in enumerate(features):
+                    # Create paired samples: one with feature=0, one with feature=1 (normalized)
+                    base_sample = df[features].iloc[0].values.astype(np.float32)
+                    modified_sample = base_sample.copy()
+
+                    # Flip the feature value
+                    feat_min = df[feat_name].min()
+                    feat_max = df[feat_name].max()
+                    if base_sample[feat_idx] < (feat_min + feat_max) / 2:
+                        modified_sample[feat_idx] = feat_max
+                    else:
+                        modified_sample[feat_idx] = feat_min
+
+                    base_t = torch.tensor(base_sample).unsqueeze(0).to(device)
+                    mod_t = torch.tensor(modified_sample).unsqueeze(0).to(device)
+
+                    # Get activations
+                    layer_names = ['layer1', 'layer2']
+                    base_acts = get_all_activations(model, base_t, layer_names)
+                    mod_acts = get_all_activations(model, mod_t, layer_names)
+
+                    # Find neurons most affected by this feature
+                    total_diff = 0
+                    for layer in layer_names:
+                        diff = (mod_acts[layer] - base_acts[layer]).abs().sum().item()
+                        total_diff += diff
+
+                    feature_importance[feat_name] = total_diff
+                    progress.progress((feat_idx + 1) / len(features))
+
+                # Normalize and compare to ground truth
+                max_imp = max(feature_importance.values()) if max(feature_importance.values()) > 0 else 1
+                normalized_imp = {k: v / max_imp for k, v in feature_importance.items()}
+
+                max_true = max(true_weights.values())
+                normalized_true = {k: v / max_true for k, v in true_weights.items()}
+
+                # Plot comparison
+                comparison_df = pd.DataFrame({
+                    'Feature': features,
+                    'Measured Importance': [normalized_imp[f] for f in features],
+                    'True Weight': [normalized_true[f] for f in features]
+                })
+
+                fig = px.bar(
+                    comparison_df.melt(id_vars='Feature', var_name='Type', value_name='Value'),
+                    x='Feature', y='Value', color='Type', barmode='group',
+                    title='Feature Importance: Measured vs Ground Truth'
+                )
+                st.plotly_chart(fig, use_container_width=True)
+
+                # Compute rank correlation
+                measured_rank = sorted(features, key=lambda f: normalized_imp[f], reverse=True)
+                true_rank = sorted(features, key=lambda f: normalized_true[f], reverse=True)
+
+                st.subheader("Ranking Comparison")
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.write("**Measured Ranking:**")
+                    for i, f in enumerate(measured_rank):
+                        st.write(f"{i+1}. {f}")
+                with col2:
+                    st.write("**True Ranking:**")
+                    for i, f in enumerate(true_rank):
+                        st.write(f"{i+1}. {f}")
+
+                # Check if ZipCode is #1 and Noise is last
+                if measured_rank[0] == 'ZipCode':
+                    st.success("ZipCode correctly identified as most important!")
+                else:
+                    st.error(f"Expected ZipCode first, got {measured_rank[0]}")
+
+                if measured_rank[-1] == 'RandomNoise':
+                    st.success("RandomNoise correctly identified as least important!")
+                else:
+                    st.warning(f"Expected RandomNoise last, got {measured_rank[-1]}")
+
+        # ------ Study 3: Circuit Completeness ------
+        elif experiment == "Study 3: Circuit Completeness":
+            st.subheader("Is the discovered bias circuit the COMPLETE explanation?")
+            st.markdown("""
+            We find neurons that respond to ZipCode, then ablate ALL of them.
+            If discrimination persists, there's another pathway we missed.
+            """)
+
+            threshold = st.slider("Bias detection threshold", 0.1, 0.5, 0.2, key="study3_thresh")
+
+            if st.button("Run Completeness Test", key="study3"):
+                features = ['Income', 'CreditHistory', 'Age', 'ZipCode', 'RandomNoise']
+
+                # First, find all bias neurons
+                st.write("**Step 1: Finding bias neurons across dataset...**")
+                bias_neurons = {'layer1': set(), 'layer2': set()}
+
+                sample_size = min(100, len(df))
+                progress = st.progress(0)
+
+                for i in range(sample_size):
+                    sample = df[features].iloc[i].values.astype(np.float32)
+                    cf_sample = sample.copy()
+                    cf_sample[3] = 1 - cf_sample[3]  # Flip ZipCode
+
+                    sample_t = torch.tensor(sample).unsqueeze(0).to(device)
+                    cf_t = torch.tensor(cf_sample).unsqueeze(0).to(device)
+
+                    layer_names = ['layer1', 'layer2']
+                    orig_acts = get_all_activations(model, sample_t, layer_names)
+                    cf_acts = get_all_activations(model, cf_t, layer_names)
+
+                    for layer in layer_names:
+                        diff = (cf_acts[layer] - orig_acts[layer]).abs().cpu().numpy().flatten()
+                        biased = np.where(diff > threshold)[0]
+                        bias_neurons[layer].update(biased)
+
+                    progress.progress((i + 1) / sample_size)
+
+                st.write(f"Found bias neurons - Layer1: {sorted(bias_neurons['layer1'])}, Layer2: {sorted(bias_neurons['layer2'])}")
+
+                # Step 2: Measure discrimination before ablation
+                st.write("**Step 2: Measuring discrimination before ablation...**")
+                zip0_preds, zip1_preds = [], []
+
+                for i in range(len(df)):
+                    sample = df[features].iloc[i].values.astype(np.float32)
+                    sample_t = torch.tensor(sample).unsqueeze(0).to(device)
+                    with torch.no_grad():
+                        pred = torch.sigmoid(model(sample_t)).item()
+                    if df['ZipCode'].iloc[i] == 0:
+                        zip0_preds.append(pred)
+                    else:
+                        zip1_preds.append(pred)
+
+                orig_gap = abs(np.mean(zip1_preds) - np.mean(zip0_preds))
+                st.write(f"Original discrimination gap: **{orig_gap:.4f}**")
+
+                # Step 3: Ablate all bias neurons and re-measure
+                st.write("**Step 3: Ablating all bias neurons...**")
+
+                # Convert to list format for pruning
+                neurons_to_prune = []
+                for layer, neurons in bias_neurons.items():
+                    for n in neurons:
+                        neurons_to_prune.append((layer, n))
+
+                if neurons_to_prune:
+                    pruned_model = prune_model(model, neurons_to_prune)
+
+                    zip0_preds_pruned, zip1_preds_pruned = [], []
+                    for i in range(len(df)):
+                        sample = df[features].iloc[i].values.astype(np.float32)
+                        sample_t = torch.tensor(sample).unsqueeze(0).to(device)
+                        with torch.no_grad():
+                            pred = torch.sigmoid(pruned_model(sample_t)).item()
+                        if df['ZipCode'].iloc[i] == 0:
+                            zip0_preds_pruned.append(pred)
+                        else:
+                            zip1_preds_pruned.append(pred)
+
+                    ablated_gap = abs(np.mean(zip1_preds_pruned) - np.mean(zip0_preds_pruned))
+                    reduction = (orig_gap - ablated_gap) / orig_gap * 100 if orig_gap > 0 else 0
+
+                    st.write(f"Discrimination gap after ablation: **{ablated_gap:.4f}**")
+                    st.write(f"Reduction: **{reduction:.1f}%**")
+
+                    # Verdict
+                    st.subheader("Verdict")
+                    if reduction >= 90:
+                        st.success(f"Circuit is COMPLETE! Ablating {len(neurons_to_prune)} neurons removed {reduction:.1f}% of discrimination.")
+                    elif reduction >= 50:
+                        st.warning(f"Circuit is PARTIAL. {reduction:.1f}% reduction - there may be additional pathways.")
+                    else:
+                        st.error(f"Circuit is INCOMPLETE. Only {reduction:.1f}% reduction - major pathways were missed.")
+
+                    # Accuracy check
+                    orig_preds = (np.array(zip0_preds + zip1_preds) > 0.5).astype(int)
+                    pruned_preds = (np.array(zip0_preds_pruned + zip1_preds_pruned) > 0.5).astype(int)
+                    true_labels = df['Target'].values
+
+                    orig_acc = (orig_preds == true_labels).mean()
+                    pruned_acc = (pruned_preds == true_labels).mean()
+
+                    st.write(f"Accuracy: {orig_acc:.4f} → {pruned_acc:.4f} (Δ = {orig_acc - pruned_acc:.4f})")
+                else:
+                    st.warning("No bias neurons found at this threshold. Try lowering it.")
 
 
 # ============================================================================
