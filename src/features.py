@@ -3,7 +3,6 @@ import torch.nn as nn
 from typing import Optional
 from abc import ABC, abstractmethod
 
-# Próbujemy zaimportować Captum. Jeśli go nie ma, kod zadziała, ale bez tych metod.
 try:
     from captum.attr import Saliency, IntegratedGradients
     CAPTUM_AVAILABLE = True

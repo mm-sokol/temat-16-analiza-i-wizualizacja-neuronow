@@ -185,8 +185,6 @@ def run_real_lab():
 
     st.subheader("Bias Configuration")
     
-    # --- FIX START: Bezpieczny wybór atrybutu chronionego ---
-    # Sprawdzamy, czy lista nie jest pusta i dobieramy bezpieczny index
     safe_index = 0
     if len(PROTECTED_ATTRIBUTES) > 1:
         safe_index = 1
@@ -224,7 +222,6 @@ def run_real_lab():
             mask_a = df[prot_attr] == val_a
             mask_b = df[prot_attr] == val_b
             
-            # Zabezpieczenie na wypadek braku próbek
             if mask_a.sum() == 0 or mask_b.sum() == 0:
                 st.error("Not enough samples for selected attribute values.")
                 st.stop()

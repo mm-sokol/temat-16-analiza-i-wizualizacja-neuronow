@@ -5,8 +5,9 @@ import plotly.express as px
 import numpy as np
 import sys
 from pathlib import Path
+from copy import deepcopy  # Needed for model copying
 
-# Captum Imports (Wymaga: uv add captum)
+# Captum Imports (Requires: uv add captum)
 try:
     from captum.attr import IntegratedGradients
     CAPTUM_AVAILABLE = True
@@ -27,6 +28,8 @@ from src.modeling.architecture import SimpleCNN, InterpretableMLP
 from src.dataset import load_mnist
 from src.plots import visualize_activations
 from src.interpretability.hooks import HookManager, get_all_activations
+# Import pruning function from backend
+from src.interpretability.pruning import prune_model
 
 # ==========================================
 # PAGE CONFIG
@@ -152,7 +155,7 @@ with col_mid:
 with col_right:
     st.subheader("Explainability Tools")
     
-    tab1, tab2 = st.tabs(["🔍 Internal Activations", "✨ Pixel Attribution (Captum)"])
+    tab1, tab2, tab3 = st.tabs(["🔍 Internal Activations", "✨ Pixel Attribution (Captum)", "✂️ Pruning"])
     
     # TAB 1: MECHANISTIC (What happened inside?)
     with tab1:
@@ -204,3 +207,65 @@ with col_right:
                 st.info("Red pixels increased the probability of this class. Blue pixels decreased it.")
         else:
             st.warning("Please install captum to use this feature.")
+
+    # TAB 3: PRUNING (Intervention)
+    with tab3:
+        st.caption("Intervention Experiment: Remove neurons and see if the model still works.")
+        
+        # Select layer to prune
+        manager = HookManager(model)
+        # Filter only linear and convolutional layers
+        prunable_layers = [l for l in manager.list_layers() if any(x in l for x in ['conv', 'fc', 'layer'])]
+        
+        selected_layer = st.selectbox("Select layer to prune", prunable_layers, key="prune_layer_select")
+        
+        if selected_layer:
+            # Get number of neurons/channels in this layer
+            dummy_out = get_all_activations(model, img_tensor, [selected_layer])[selected_layer]
+            # For CNN: number of channels (dim 1), For MLP: number of neurons (dim 1 or 0)
+            n_units = dummy_out.shape[1] if dummy_out.ndim > 1 else dummy_out.shape[0]
+            
+            st.write(f"Layer `{selected_layer}` has **{n_units}** units (neurons or filters).")
+            
+            # Select neurons to remove
+            neurons_to_kill = st.multiselect(
+                "Select indices to remove (disable)", 
+                options=list(range(n_units)),
+                default=[0] if n_units > 0 else []
+            )
+            
+            if st.button("✂️ Perform Lobotomy"):
+                # 1. Copy model
+                lobotomized_model = deepcopy(model)
+                
+                # 2. Create mask
+                mask_dict = {selected_layer: neurons_to_kill}
+                
+                # 3. Apply pruning (using backend function)
+                lobotomized_model = prune_model(lobotomized_model, mask_dict, copy=False)
+                
+                # 4. Check result
+                lobotomized_model.eval()
+                with torch.no_grad():
+                    new_output = lobotomized_model(img_tensor)
+                    new_pred = new_output.argmax(dim=1).item()
+                    new_probs = F.softmax(new_output, dim=1).cpu().numpy().flatten()
+                
+                # 5. Visualize comparison
+                col_orig, col_new = st.columns(2)
+                
+                with col_orig:
+                    st.metric("Original Prediction", f"{pred_label}", delta=None)
+                    st.write("Confidence (Original):")
+                    st.bar_chart(probs)
+                    
+                with col_new:
+                    delta_color = "normal" if new_pred == pred_label else "inverse"
+                    st.metric("After Pruning", f"{new_pred}", delta=f"{new_probs[new_pred] - probs[new_pred]:.2f}", delta_color=delta_color)
+                    st.write("Confidence (After Pruning):")
+                    st.bar_chart(new_probs)
+                
+                if new_pred != pred_label:
+                    st.error(f"⚠️ Lobotomy successful! Model changed its mind from {pred_label} to {new_pred}.")
+                else:
+                    st.success("Model is robust to damage in these neurons.")
