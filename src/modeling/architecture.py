@@ -15,11 +15,11 @@ class InterpretableMLP(nn.Module):
         super().__init__()
         self.flatten = nn.Flatten()
         
-        # Layer 1: Input to Hidden (Feature extraction)
+        
         self.fc1 = nn.Linear(input_size, hidden_size)
         self.relu = nn.ReLU()
         
-        # Layer 2: Hidden to Output (Classification)
+        
         self.fc2 = nn.Linear(hidden_size, output_size)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -35,7 +35,7 @@ class InterpretableMLP(nn.Module):
 class SimpleCNN(nn.Module):
     def __init__(self):
         super().__init__()
-        # Wejście: [Batch, 1, 28, 28] -> nie spłaszczamy!
+        
         self.conv1 = nn.Conv2d(1, 16, 3, 1)
         self.relu1 = nn.ReLU()
         self.pool1 = nn.MaxPool2d(2)
@@ -43,7 +43,7 @@ class SimpleCNN(nn.Module):
         self.relu2 = nn.ReLU()
         self.pool2 = nn.MaxPool2d(2)
         self.flatten = nn.Flatten()
-        self.fc1 = nn.Linear(32 * 5 * 5, 10) # 5x5 to rozmiar po poolingach
+        self.fc1 = nn.Linear(32 * 5 * 5, 10) 
 
     def forward(self, x):
         x = self.pool1(self.relu1(self.conv1(x)))
@@ -52,7 +52,7 @@ class SimpleCNN(nn.Module):
         x = self.fc1(x)
         return x
     
-# ... (Poprzednie importy i klasy InterpretableMLP, SimpleCNN) ...
+
 
 class RealCreditModel(nn.Module):
     """
@@ -61,18 +61,18 @@ class RealCreditModel(nn.Module):
     """
     def __init__(self, input_dim: int, hidden_dim: list = [64, 32], output_dim: int = 3) -> None:
         super().__init__()
-        # Layer 1
+        
         self.layer1 = nn.Linear(input_dim, hidden_dim[0])
         self.bn1 = nn.BatchNorm1d(hidden_dim[0])
         self.relu1 = nn.ReLU()
         self.dropout = nn.Dropout(0.2)
         
-        # Layer 2
+        
         self.layer2 = nn.Linear(hidden_dim[0], hidden_dim[1])
         self.bn2 = nn.BatchNorm1d(hidden_dim[1])
         self.relu2 = nn.ReLU()
         
-        # Output
+        
         self.output = nn.Linear(hidden_dim[1], output_dim)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:

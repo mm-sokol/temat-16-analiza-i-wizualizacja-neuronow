@@ -40,7 +40,7 @@ def ablation_tab(model, df, activations, layer_names):
     neurons_to_ablate, selected_layer = get_nerurons_to_ablate(layer_names, activations)
 
     if neurons_to_ablate and st.button("Run Ablation Study"):
-        # Compare predictions across dataset
+        
         original_probs = []
         ablated_probs = []
         progress = st.progress(0)
@@ -61,10 +61,10 @@ def ablation_tab(model, df, activations, layer_names):
                 .unsqueeze(0)
                 .to(device)
             )
-            # Original prediction
+            
             with torch.no_grad():
                 orig_prob = model(x).item()
-            # Ablated prediction using generic module
+            
             ablated_output = run_ablation(model, x, selected_layer, neurons_to_ablate)
             abl_prob = ablated_output.item()
             original_probs.append(orig_prob)
@@ -78,7 +78,7 @@ def ablation_tab(model, df, activations, layer_names):
             comparison_df["Ablated Prob"] - comparison_df["Original Prob"]
         )
         st.subheader("Ablation Results")
-        # Scatter plot
+        
         fig = px.scatter(
             comparison_df,
             x="Original Prob",

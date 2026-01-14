@@ -12,7 +12,7 @@ class MNISTDataModule:
 
     def __init__(self, config: ProjectConfig) -> None:
         self.config = config
-        # Standard normalization for MNIST
+        
         self.transform = transforms.Compose(
             [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
         )
@@ -61,7 +61,7 @@ def load_mnist(batch_size: int = 64) -> Tuple[DataLoader, DataLoader]:
     """
     from pathlib import Path
     
-    # Use default data directory
+    
     data_dir = Path(__file__).resolve().parents[1] / "data" / "raw"
     data_dir.mkdir(parents=True, exist_ok=True)
     

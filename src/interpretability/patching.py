@@ -24,7 +24,7 @@ class PatchingResult:
     corrupted_output: torch.Tensor
     patched_output: torch.Tensor
     layer_name: str
-    effect: float  # Normalized effect of patching: how much it restores clean behavior
+    effect: float  
 
     @property
     def recovery_ratio(self) -> float:
@@ -71,18 +71,18 @@ def activation_patching(
     """
     manager = HookManager(model)
 
-    # Step 1: Get clean activations
+    
     model.eval()
     with torch.no_grad():
         with manager.capture_activations([layer_name]) as cache:
             clean_output = model(clean_input)
         clean_activations = cache.get(layer_name)
 
-    # Step 2: Get corrupted output (no patching)
+    
     with torch.no_grad():
         corrupted_output = model(corrupted_input)
 
-    # Step 3: Run corrupted input with patched clean activations
+    
     def patch_fn(output: torch.Tensor) -> torch.Tensor:
         if neuron_indices is None:
             return clean_activations
@@ -99,7 +99,7 @@ def activation_patching(
         with manager.intervention(layer_name, patch_fn):
             patched_output = model(corrupted_input)
 
-    # Compute effect: how much did patching move output toward clean?
+    
     clean_corrupted_dist = (clean_output - corrupted_output).abs().mean()
     patched_corrupted_dist = (patched_output - corrupted_output).abs().mean()
 
@@ -149,7 +149,7 @@ def causal_trace(
             result = activation_patching(model, clean_input, corrupted_input, layer_name)
             results[layer_name] = result
         except ValueError:
-            # Layer might not be hookable
+            
             continue
 
     return results
@@ -236,7 +236,7 @@ def steering_vector(
     """
     manager = HookManager(model)
 
-    # Collect positive activations
+    
     positive_activations = []
     model.eval()
     with torch.no_grad():
@@ -245,7 +245,7 @@ def steering_vector(
                 model(inp)
             positive_activations.append(cache.get(layer_name))
 
-    # Collect negative activations
+    
     negative_activations = []
     with torch.no_grad():
         for inp in negative_inputs:
@@ -253,7 +253,7 @@ def steering_vector(
                 model(inp)
             negative_activations.append(cache.get(layer_name))
 
-    # Compute mean difference
+    
     pos_mean = torch.stack(positive_activations).mean(dim=0)
     neg_mean = torch.stack(negative_activations).mean(dim=0)
 
