@@ -10,6 +10,19 @@ Celem projektu jest realizacja metody pozwalającej na zinterpretowanie procesu 
 Wyniki metody przedstawiane są przez wizualizację struktury sieci. W przeprowadzonym eksperymencie sprawdzamy, czy uzyskane w ten sposób informacje
 mogą pozwolić na usprawnienie procesu optymalizacji lub regularyzacji.
 
+### Pobieranie danych
+- Dataset konieczny do uruchomienia projektu jest dostępny pod linkiem: [Credit Score](https://www.kaggle.com/datasets/parisrohan/credit-score-classification/data)
+    - Należy go rozpakować w tym miejscu: /temat16/data/raw/CreditScore/train.csv
+- Dataset MNIST pobierze się automatycznie
+
+### Instalacja i uruchomienie
+```bash
+uv venv
+source .venv/bin/activate
+uv sync
+uv run streamlit run streamlit/app.py
+```
+
 ## Wytyczne
 **Wymagania:**
 - [ ] Narzędzie, które dla (dowolnej) sieci neuronowej wizualizuje jej strukturę z naciskiem na interpretowalność decyzji modelu
