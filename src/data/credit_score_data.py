@@ -29,7 +29,7 @@ class DatasetInfo:
     numerical_features: List[str]
 
 
-# Features to use for the model
+
 FEATURE_COLUMNS = [
     'Age',
     'Annual_Income',
@@ -46,7 +46,7 @@ FEATURE_COLUMNS = [
     'Outstanding_Debt',
 ]
 
-# Categorical features to encode
+
 CATEGORICAL_FEATURES = [
     'Occupation',
     'Credit_Mix',
@@ -54,18 +54,18 @@ CATEGORICAL_FEATURES = [
     'Payment_Behaviour',
 ]
 
-# Features that could be protected attributes (for bias analysis)
+
 PROTECTED_ATTRIBUTES = [
     'Occupation',
-    'Age_Group',  # We'll create age groups
+    'Age_Group',  
     'Credit_Mix',
     'Payment_of_Min_Amount',
 ]
 
-# Target column
+
 TARGET_COLUMN = 'Credit_Score'
 
-# Target encoding
+
 TARGET_ENCODING = {'Poor': 0, 'Standard': 1, 'Good': 2}
 
 
@@ -79,7 +79,7 @@ def load_raw_data(data_path: Optional[Path] = None) -> pd.DataFrame:
         Raw DataFrame.
     """
     if data_path is None:
-        # Default path relative to project root (src/data/ -> parents[2] = project root)
+        
         data_path = Path(__file__).resolve().parents[2] / 'data' / 'raw' / 'CreditScore'
 
     train_path = data_path / 'train.csv'
@@ -99,14 +99,14 @@ def clean_numeric_column(series: pd.Series) -> pd.Series:
     - Negative ages
     - String representations of numbers
     """
-    # Convert to string first
+    
     str_series = series.astype(str)
 
-    # Remove underscores and other garbage
+    
     str_series = str_series.str.replace('_', '', regex=False)
     str_series = str_series.str.replace(',', '', regex=False)
 
-    # Convert to numeric, coercing errors to NaN
+    
     numeric_series = pd.to_numeric(str_series, errors='coerce')
 
     return numeric_series
@@ -121,7 +121,7 @@ def clean_categorical_column(series: pd.Series, valid_values: Optional[List[str]
     """
     cleaned = series.astype(str).str.strip()
 
-    # Replace common garbage patterns
+    
     garbage_patterns = ['_', '_______', '!@9#%8', 'nan', 'NaN', '']
     for pattern in garbage_patterns:
         cleaned = cleaned.replace(pattern, 'Unknown')
@@ -168,15 +168,15 @@ def preprocess_data(
     Returns:
         Tuple of (processed DataFrame, DatasetInfo).
     """
-    # Sample if too large
+    
     if len(df) > max_samples:
         df = df.sample(n=max_samples, random_state=random_state)
 
     processed = pd.DataFrame()
 
-    # Clean numeric features
+    
     processed['Age'] = clean_numeric_column(df['Age'])
-    processed['Age'] = processed['Age'].clip(18, 100)  # Reasonable age range
+    processed['Age'] = processed['Age'].clip(18, 100)  
 
     processed['Annual_Income'] = clean_numeric_column(df['Annual_Income'])
     processed['Monthly_Inhand_Salary'] = df['Monthly_Inhand_Salary'].fillna(0)
@@ -191,7 +191,7 @@ def preprocess_data(
     processed['Total_EMI_per_month'] = df['Total_EMI_per_month'].fillna(0)
     processed['Outstanding_Debt'] = clean_numeric_column(df['Outstanding_Debt']).fillna(0)
 
-    # Clean categorical features
+    
     valid_occupations = [
         'Lawyer', 'Architect', 'Engineer', 'Scientist', 'Mechanic',
         'Accountant', 'Developer', 'Media_Manager', 'Teacher',
@@ -219,22 +219,22 @@ def preprocess_data(
         df['Payment_Behaviour'], valid_behaviour
     )
 
-    # Create age groups for bias analysis
+    
     processed['Age_Group'] = create_age_groups(processed['Age'])
 
-    # Target
+    
     processed['Credit_Score'] = df['Credit_Score'].map(TARGET_ENCODING)
 
-    # Drop rows with missing target
+    
     processed = processed.dropna(subset=['Credit_Score'])
     processed['Credit_Score'] = processed['Credit_Score'].astype(int)
 
-    # Fill remaining NaN with median/mode
+    
     for col in processed.select_dtypes(include=[np.number]).columns:
         if col != 'Credit_Score':
             processed[col] = processed[col].fillna(processed[col].median())
 
-    # Get info
+    
     numerical_features = [col for col in processed.columns
                          if processed[col].dtype in ['int64', 'float64']
                          and col != 'Credit_Score']
@@ -270,7 +270,7 @@ def encode_features(
     encodings = {}
     encoded_parts = []
 
-    # Normalize numerical features
+    
     for col in numerical_cols:
         values = df[col].values.astype(float)
         min_val, max_val = values.min(), values.max()
@@ -281,7 +281,7 @@ def encode_features(
         encoded_parts.append(normalized.reshape(-1, 1))
         encodings[col] = {'type': 'numerical', 'min': min_val, 'max': max_val}
 
-    # One-hot encode categorical features
+    
     for col in categorical_cols:
         unique_values = sorted(df[col].unique())
         value_to_idx = {v: i for i, v in enumerate(unique_values)}
@@ -366,32 +366,32 @@ def create_contrastive_samples(
     Returns:
         Tuple of (original tensors, counterfactual tensors, sample info DataFrame).
     """
-    # Find samples with value_a
+    
     mask_a = df[protected_attribute] == value_a
     indices_a = np.where(mask_a)[0]
 
     if len(indices_a) == 0:
         raise ValueError(f"No samples found with {protected_attribute}={value_a}")
 
-    # Take subset
+    
     max_samples = min(100, len(indices_a))
     indices_a = indices_a[:max_samples]
 
-    # Get original tensors
+    
     X_original = X_tensor[indices_a]
 
-    # Create counterfactual DataFrame
+    
     df_cf = df.iloc[indices_a].copy()
     df_cf[protected_attribute] = value_b
 
-    # Re-encode counterfactual
+    
     X_cf, _ = encode_features(df_cf, categorical_cols, numerical_cols)
     X_counterfactual = torch.tensor(X_cf, dtype=torch.float32)
 
     return X_original, X_counterfactual, df.iloc[indices_a]
 
 
-# Convenience function for Streamlit
+
 def load_credit_score_dataset(
     max_samples: int = 5000,
     random_state: int = 42

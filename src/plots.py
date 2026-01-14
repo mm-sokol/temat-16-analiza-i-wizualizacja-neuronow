@@ -30,7 +30,7 @@ class VisualizationEngine:
         ax1.set_title("Original Input")
         ax1.axis('off')
         
-        # Saliency Heatmap
+        
         ax2.imshow(img_np, cmap='gray', alpha=0.5)
         im = ax2.imshow(sal_np, cmap='hot', alpha=0.9)
         ax2.set_title("Saliency Map (Decision Focus)")
@@ -83,23 +83,23 @@ def visualize_activations(activations: Union[torch.Tensor, np.ndarray], layer_na
         activations: The tensor/array containing activation values.
         layer_name: Name of the layer for labeling purposes.
     """
-    # 1. Safe conversion to NumPy
+    
     if isinstance(activations, torch.Tensor):
         acts = activations.detach().cpu().numpy()
     else:
         acts = activations
         
-    # 2. Squeeze batch dimension if present (e.g., [1, 128] -> [128])
+    
     if acts.ndim > 1 and acts.shape[0] == 1:
         acts = acts.squeeze(0)
 
-    # --- SCENARIO A: CNN (3D -> [Channels, Height, Width]) ---
+    
     if acts.ndim == 3:
         n_channels = acts.shape[0]
         st.markdown(f"Convolutional Layer: `{layer_name}`")
         st.caption(f"Detected {n_channels} feature maps. Each map responds to a specific visual pattern.")
         
-        # Channel Selector
+        
         col1, col2 = st.columns([1, 3])
         with col1:
             channel_idx = st.slider(f"Select Channel", 0, n_channels-1, 0, key=f"slider_{layer_name}")
@@ -112,16 +112,16 @@ def visualize_activations(activations: Union[torch.Tensor, np.ndarray], layer_na
                 labels={'x': 'W', 'y': 'H', 'color': 'Activation'},
                 height=400
             )
-            # Clean up axes
+            
             fig.update_xaxes(showticklabels=False).update_yaxes(showticklabels=False)
             st.plotly_chart(fig, use_container_width=True)
 
-    # --- SCENARIO B: MLP (1D -> [Neurons]) ---
+    
     elif acts.ndim == 1:
         n_neurons = len(acts)
         st.markdown(f"Linear Layer: `{layer_name}`")
         
-        # Use Histogram for very large layers to avoid clutter
+        
         if n_neurons > 500:
             st.warning("High neuron count. Displaying activation distribution histogram.")
             fig = px.histogram(
@@ -130,7 +130,7 @@ def visualize_activations(activations: Union[torch.Tensor, np.ndarray], layer_na
                 title="Activation Distribution",
                 labels={'value': 'Activation Value'}
             )
-        # Use Bar Chart for standard layers
+        
         else:
             fig = px.bar(
                 x=list(range(n_neurons)),
@@ -144,6 +144,6 @@ def visualize_activations(activations: Union[torch.Tensor, np.ndarray], layer_na
         
         st.plotly_chart(fig, use_container_width=True)
     
-    # --- SCENARIO C: Unsupported Shape ---
+    
     else:
         st.error(f"Unsupported activation shape: {acts.shape}. Expected 1D (MLP) or 3D (CNN).")

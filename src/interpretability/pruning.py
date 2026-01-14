@@ -23,7 +23,7 @@ class PruningResult:
 
     original_model: nn.Module
     pruned_model: nn.Module
-    pruned_layers: Dict[str, List[int]]  # layer_name -> pruned neuron indices
+    pruned_layers: Dict[str, List[int]]  
     num_neurons_pruned: int
 
     def summary(self) -> str:
@@ -93,17 +93,17 @@ def prune_model(
     if copy:
         model = deepcopy(model)
 
-    # Convert lists to masks
+    
     processed_masks = {}
     for layer_name, mask_or_list in neuron_mask.items():
         if isinstance(mask_or_list, list):
-            # Get layer to determine size
+            
             manager = HookManager(model)
             layer = manager.get_layer(layer_name)
             if layer is None:
                 continue
 
-            # Determine number of neurons
+            
             if hasattr(layer, "out_features"):
                 num_neurons = layer.out_features
             elif hasattr(layer, "weight"):
@@ -115,7 +115,7 @@ def prune_model(
         else:
             processed_masks[layer_name] = mask_or_list
 
-    # Apply pruning
+    
     for layer_name, mask in processed_masks.items():
         _prune_layer(model, layer_name, mask)
 
@@ -138,7 +138,7 @@ def _prune_layer(model: nn.Module, layer_name: str, keep_mask: torch.Tensor) -> 
 
     with torch.no_grad():
         if hasattr(layer, "weight"):
-            # Zero out rows corresponding to pruned neurons
+            
             prune_indices = (~keep_mask).nonzero(as_tuple=True)[0]
             for idx in prune_indices:
                 if idx < layer.weight.shape[0]:
@@ -188,7 +188,7 @@ def prune_by_importance(
         _, top_indices = torch.topk(importance_scores, num_keep)
         keep_mask = torch.zeros(num_neurons, dtype=torch.bool)
         keep_mask[top_indices] = True
-    else:  # keep_top
+    else:  
         _, top_indices = torch.topk(importance_scores, min(keep_top, num_neurons))
         keep_mask = torch.zeros(num_neurons, dtype=torch.bool)
         keep_mask[top_indices] = True
@@ -253,7 +253,7 @@ def evaluate_pruning_impact(
         original_outputs = original_model(test_inputs)
         pruned_outputs = pruned_model(test_inputs)
 
-    # Compute output difference
+    
     output_diff = (original_outputs - pruned_outputs).abs()
 
     metrics = {
@@ -266,7 +266,7 @@ def evaluate_pruning_impact(
         else 1.0,
     }
 
-    # Compute accuracy if labels provided
+    
     if test_labels is not None:
         if original_outputs.dim() > 1 and original_outputs.shape[-1] > 1:
             original_preds = original_outputs.argmax(dim=-1)
@@ -316,7 +316,7 @@ def iterative_pruning(
     if copy:
         model = deepcopy(model)
 
-    # Calculate neurons to prune per step
+    
     importance = importance_fn(model)
     num_neurons = len(importance)
     total_to_prune = int(num_neurons * target_sparsity)
@@ -325,16 +325,16 @@ def iterative_pruning(
     pruned_so_far = set()
 
     for step in range(steps):
-        # Recompute importance
+        
         importance = importance_fn(model)
 
-        # Mask out already pruned neurons
+        
         for idx in pruned_so_far:
             importance[idx] = float("inf")
 
-        # Find next batch to prune
+        
         if step == steps - 1:
-            # Last step: prune remaining
+            
             num_to_prune = total_to_prune - len(pruned_so_far)
         else:
             num_to_prune = per_step
@@ -342,12 +342,12 @@ def iterative_pruning(
         if num_to_prune <= 0:
             continue
 
-        # Get least important neurons
+        
         _, bottom_indices = torch.topk(importance, num_to_prune, largest=False)
         new_prune = set(bottom_indices.tolist())
         pruned_so_far.update(new_prune)
 
-        # Apply pruning
+        
         model = prune_model(model, {layer_name: list(new_prune)}, copy=False)
 
     return model

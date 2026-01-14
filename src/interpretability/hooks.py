@@ -63,7 +63,7 @@ class HookManager:
     def _build_layer_map(self) -> None:
         """Build a mapping from layer names to layer modules."""
         for name, module in self.model.named_modules():
-            if name:  # Skip the root module
+            if name:  
                 self._layer_map[name] = module
 
     def get_layer(self, name: str) -> Optional[nn.Module]:

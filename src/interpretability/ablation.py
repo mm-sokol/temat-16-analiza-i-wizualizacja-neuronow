@@ -37,7 +37,7 @@ def ablate_neurons(
         elif output_modified.dim() == 2:
             output_modified[:, idx] = ablation_value
         elif output_modified.dim() >= 3:
-            # For conv layers or higher-dimensional outputs
+            
             output_modified[:, idx, ...] = ablation_value
     return output_modified
 
@@ -68,7 +68,7 @@ def run_ablation(
     Example:
         >>> model = nn.Sequential(nn.Linear(10, 5), nn.ReLU(), nn.Linear(5, 2))
         >>> x = torch.randn(1, 10)
-        >>> output = run_ablation(model, x, "0", [0, 2])  # Ablate neurons 0 and 2
+        >>> output = run_ablation(model, x, "0", [0, 2])  
     """
     manager = HookManager(model)
 

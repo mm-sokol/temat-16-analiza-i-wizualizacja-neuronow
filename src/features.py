@@ -51,20 +51,20 @@ class GradientInterpreter(ModelInterpreter):
         """
         self.model.eval()
 
-        # We need gradients relative to the input image
+        
         input_tensor.requires_grad_()
 
-        # Forward pass
+        
         output = self.model(input_tensor)
 
-        # Zero previous gradients
+        
         self.model.zero_grad()
 
-        # Backward pass for the specific target class score
+        
         target_score = output[0, target_class]
         target_score.backward()
 
-        # Saliency is the magnitude of the gradient (how sensitive is the output to this pixel?)
+        
         if input_tensor.grad is not None:
             saliency = input_tensor.grad.data.abs()
             return saliency

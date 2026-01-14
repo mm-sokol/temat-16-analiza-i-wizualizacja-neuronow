@@ -37,18 +37,18 @@ def circut_detection_tab(model, input_tensor, input_features, layer_names):
     )
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    # Create Counterfactual
+    
     cf_features = input_features.copy()
-    cf_features["Zip Code"] = 1 - cf_features["Zip Code"]  # Flip
+    cf_features["Zip Code"] = 1 - cf_features["Zip Code"]  
     cf_tensor = (
         torch.tensor(cf_features.values, dtype=torch.float32).unsqueeze(0).to(device)
     )
 
-    # Get activations for both using generic module
+    
     orig_activations = get_all_activations(model, input_tensor, layer_names)
     cf_activations = get_all_activations(model, cf_tensor, layer_names)
 
-    # Calculate Differences
+    
     col_d1, col_d2 = st.columns(2)
 
     with col_d1:
@@ -84,7 +84,7 @@ def circut_detection_tab(model, input_tensor, input_features, layer_names):
         "These are candidates for pruning to improve fairness."
     )
 
-    # Circuit discovery using generic module
+    
     st.subheader("Automated Circuit Discovery")
     if st.button("Discover Bias Circuit"):
         circuit = discover_circuits(
@@ -125,17 +125,17 @@ def get_couterfactual(
             logits[:, orig_class] - logits[:, target_label] + m
         ).mean()
 
-        # target_loss = -logits[:, target_label].mean()
+        
 
         proximity_loss = torch.norm(couterfactual_img - original_img, p=2)
 
-        # 1 pixel shift in the horizontal direction
-        # 1 pixel shift in the hertical direction
-        # regularization_loss = torch.mean(
-        #     torch.abs(couterfactual_img[:, :, :-1] - couterfactual_img[:, :, 1:])
-        # ) + torch.mean(
-        #     torch.abs(couterfactual_img[:, :-1, :] - couterfactual_img[:, 1:, :])
-        # )
+        
+        
+        
+        
+        
+        
+        
         regularization_loss = torch.norm(couterfactual_img - original_img, p=1)
 
         loss = (
@@ -233,7 +233,7 @@ def circut_detection_on_images_tab(
         "These are candidates for pruning."
     )
 
-    # Circuit discovery using generic module
+    
     st.subheader("Automated Circuit Discovery")
     if st.button("Discover Bias Circuit"):
         circuit = discover_circuits(
@@ -301,15 +301,15 @@ def safety_pruning(model, input_features, df):
             )
 
             if prune_neurons and st.button("Apply Pruning"):
-                # Prune the model
+                
                 pruned_model, result = prune_biased_neurons(
                     model, prune_layer, prune_neurons, copy=True
                 )
                 st.write(result.summary())
-                # Compare on contrastive examples
+                
                 st.subheader("Fairness Impact")
 
-                # Create matched pairs with different zip codes
+                
                 test_features_adv = input_features.copy()
                 test_features_adv["Zip Code"] = 1
                 test_features_dis = input_features.copy()
@@ -354,7 +354,7 @@ def safety_pruning(model, input_features, df):
                         delta=f"{new_gap - old_gap:.3f}",
                         delta_color="inverse",
                     )
-                # Full dataset comparison
+                
                 st.subheader("Full Dataset Impact")
                 orig_probs = []
                 pruned_probs = []
@@ -399,7 +399,7 @@ def safety_pruning(model, input_features, df):
                     )
                 )
                 st.plotly_chart(fig, width="stretch")
-                # Accuracy comparison
+                
                 orig_preds = (np.array(orig_probs) > 0.5).astype(int)
                 pruned_preds = (np.array(pruned_probs) > 0.5).astype(int)
                 true_labels = df["Target"].values
@@ -560,7 +560,7 @@ def safety_pruning_on_images_tab(model, input_image, test_loader):
                     )
                 )
                 st.plotly_chart(fig, width="stretch")
-                # Accuracy comparison
+                
                 st.write(f"**Original Accuracy:** {orig_overall_accuracy:.4f}")
                 st.write(f"**Pruned Accuracy:** {pruned_overall_accuracy:.4f}")
                 st.write(
