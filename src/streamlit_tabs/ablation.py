@@ -164,9 +164,9 @@ def ablation_on_images_tab(model, test_loader, activations, layer_names):
         )
 
         fig = px.scatter(
-            x=all_original_probs[:, choice - 1].numpy(),
-            y=all_ablated_probs[:, choice - 1].numpy(),
-            color=all_labels.numpy(),
+            x=all_original_probs[:, choice - 1].cpu().numpy(),
+            y=all_ablated_probs[:, choice - 1].cpu().numpy(),
+            color=all_labels.cpu().numpy(),
             title="Original vs Ablated Predictions",
         )
         fig.update_layout(

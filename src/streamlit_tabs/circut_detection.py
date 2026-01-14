@@ -162,6 +162,9 @@ def circut_detection_on_images_tab(
 ):
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
+    # Ensure input is on correct device
+    original_img = original_img.to(device)
+
     col1, col2 = st.columns(2)
 
     with col1:
@@ -416,6 +419,9 @@ def safety_pruning_on_images_tab(model, input_image, test_loader):
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
+    # Ensure input is on correct device
+    input_image = input_image.to(device)
+
     if "bias_circuit" not in st.session_state:
         st.warning(
             "No bias circuit discovered yet. Go to 'Bias Circuit Detection' tab first."
@@ -488,7 +494,7 @@ def safety_pruning_on_images_tab(model, input_image, test_loader):
                 with col1:
                     fig_d2 = px.bar(
                         x=list(range(1, len(orig_y) + 1)),
-                        y=pruned_y - orig_y,
+                        y=(pruned_y - orig_y).cpu().numpy(),
                         labels={"x": "Label", "y": "Change in Probability"},
                         title="Classification output difference between original and pruned model",
                     )
@@ -497,7 +503,7 @@ def safety_pruning_on_images_tab(model, input_image, test_loader):
                 with col2:
                     fig_d2 = px.bar(
                         x=list(range(1, len(orig_cf) + 1)),
-                        y=pruned_cf - orig_cf,
+                        y=(pruned_cf - orig_cf).cpu().numpy(),
                         labels={"x": "Label", "y": "Change in Probability"},
                         title="Difference between original and pruned model on counterfactual image",
                     )
@@ -535,9 +541,9 @@ def safety_pruning_on_images_tab(model, input_image, test_loader):
                 orig_overall_accuracy = correct_orig / total
                 pruned_overall_accuracy = correct_pruned / total
 
-                original = torch.cat(original_probs, dim=0)
-                pruned = torch.cat(pruned_probs, dim=0)
-                all_labels = torch.cat(targets, dim=0)
+                original = torch.cat(original_probs, dim=0).cpu()
+                pruned = torch.cat(pruned_probs, dim=0).cpu()
+                all_labels = torch.cat(targets, dim=0).cpu()
 
                 fig = px.scatter(
                     x=original,

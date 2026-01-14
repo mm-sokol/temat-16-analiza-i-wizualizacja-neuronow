@@ -36,11 +36,10 @@ from src.interpretability import HookManager, get_all_activations, prune_model
 # ==========================================
 st.set_page_config(
     page_title="Vision Lab",
-    page_icon="🔬",
     layout="wide"
 )
 
-st.title("🔬 Vision Lab: Architecture Comparison")
+st.title("Vision Lab: Architecture Comparison")
 st.markdown("""
 **Mechanistic Interpretability on Image Data.**
 Compare how a **Convolutional Neural Network (CNN)** preserves spatial structure versus how a **Multi-Layer Perceptron (MLP)** flattens it.
@@ -266,6 +265,6 @@ with col_right:
                     st.bar_chart(new_probs)
                 
                 if new_pred != pred_label:
-                    st.error(f"⚠️ Lobotomy successful! Model changed its mind from {pred_label} to {new_pred}.")
+                    st.error(f"Lobotomy successful! Model changed its mind from {pred_label} to {new_pred}.")
                 else:
                     st.success("Model is robust to damage in these neurons.")
