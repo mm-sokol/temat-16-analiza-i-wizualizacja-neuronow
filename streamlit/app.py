@@ -304,7 +304,7 @@ elif demo_mode == "Credit Score (Real Dataset)":
     )
 
     # Import data loader
-    from credit_score_data import (
+    from src.data.credit_score_data import (
         load_credit_score_dataset,
         get_protected_attribute_values,
         create_contrastive_samples,
