@@ -26,6 +26,7 @@ dependencies = [
     "tqdm>=4.66.0",
     "click>=8.1.0",
     "python-dotenv>=0.5.1",
+    "git-filter-repo>=2.47.0",
 ]
 
 [project.optional-dependencies]
