@@ -18,8 +18,10 @@ except ImportError:
 # PATH CONFIGURATION
 # ==========================================
 current_file = Path(__file__).resolve()
-project_root = current_file.parent.parent.parent
+streamlit_dir = current_file.parent.parent  # streamlit/
+project_root = streamlit_dir.parent  # project root
 sys.path.insert(0, str(project_root))
+sys.path.insert(0, str(streamlit_dir))  # For potential local imports
 
 # ==========================================
 # IMPORTS
@@ -27,9 +29,7 @@ sys.path.insert(0, str(project_root))
 from src.modeling.architecture import SimpleCNN, InterpretableMLP
 from src.dataset import load_mnist
 from src.plots import visualize_activations
-from src.interpretability.hooks import HookManager, get_all_activations
-# Import pruning function from backend
-from src.interpretability.pruning import prune_model
+from src.interpretability import HookManager, get_all_activations, prune_model
 
 # ==========================================
 # PAGE CONFIG
