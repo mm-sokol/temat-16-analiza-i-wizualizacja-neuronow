@@ -3,11 +3,18 @@ import torch.nn as nn
 from typing import Optional
 from abc import ABC, abstractmethod
 
+try:
+    from captum.attr import Saliency, IntegratedGradients
+    CAPTUM_AVAILABLE = True
+except ImportError:
+    CAPTUM_AVAILABLE = False
+
 
 class ModelInterpreter(ABC):
 
     def __init__(self, model: nn.Module) -> None:
         self.model = model
+        self.model.eval()
 
     @abstractmethod
     def compute_saliency_map(
@@ -92,20 +99,46 @@ class IntegratedGradient(ModelInterpreter):
 
             gradients.append(interpolated.grad.detach())
 
-        # trapezoidal rule integral approximation
         integral_approx = (
             gradients[0] / 2
             + torch.mean(torch.stack(gradients[1:-1]), dim=0)
             + gradients[-1] / 2
         )
         ig = (input_tensor - baseline_tensor) * integral_approx
-        saliency_map = ig.abs().max(dim=1)[0]
-        return saliency_map
+        return ig.abs()
+
+
+
+class CaptumSaliency(ModelInterpreter):
+    def compute_saliency_map(
+        self, input_tensor: torch.Tensor, target_class: int, **kwargs
+    ) -> torch.Tensor:
+        if not CAPTUM_AVAILABLE:
+            raise ImportError("Captum library is not installed.")
+            
+        algo = Saliency(self.model)
+        attr = algo.attribute(input_tensor, target=target_class, abs=False)
+        return attr.abs()
+
+
+class CaptumIG(ModelInterpreter):
+    def compute_saliency_map(
+        self, input_tensor: torch.Tensor, target_class: int, **kwargs
+    ) -> torch.Tensor:
+        if not CAPTUM_AVAILABLE:
+            raise ImportError("Captum library is not installed.")
+
+        algo = IntegratedGradients(self.model)
+        attr = algo.attribute(input_tensor, target=target_class, n_steps=50)
+        return attr.abs()
+
 
 
 INTERPRETER_REGISTRY = {
     "gradient": GradientInterpreter,
     "integrated_grad": IntegratedGradient,
+    "captum_saliency": CaptumSaliency,
+    "captum_ig": CaptumIG,
 }
 
 
