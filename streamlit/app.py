@@ -163,12 +163,13 @@ elif demo_mode == "MNIST (Trained Models)":
     model_path = project_root / model_options[selected_model]
 
     @st.cache_resource
-    def load_mnist_model(path: str, is_sparse: bool):
+    def load_mnist_model(path: str, is_sparse: bool, target_device: str):
         from src.modeling.architecture import InterpretableMLP
 
         # Both models use the same architecture
         model = InterpretableMLP(input_size=784, hidden_size=128, output_size=10)
-        model.load_state_dict(torch.load(path, map_location="cpu", weights_only=True))
+        model.load_state_dict(torch.load(path, map_location=target_device, weights_only=True))
+        model.to(target_device)
         model.eval()
         return model
 
@@ -182,7 +183,7 @@ elif demo_mode == "MNIST (Trained Models)":
 
     try:
         is_sparse = "Sparse" in selected_model
-        model = load_mnist_model(str(model_path), is_sparse)
+        model = load_mnist_model(str(model_path), is_sparse, device)
 
         st.success(f"Loaded {selected_model}")
 
@@ -211,7 +212,7 @@ elif demo_mode == "MNIST (Trained Models)":
         images, labels = get_mnist_samples(10)
 
         sample_idx = st.slider("Select sample", 0, 9, 0)
-        sample_image = images[sample_idx : sample_idx + 1].view(1, -1)
+        sample_image = images[sample_idx : sample_idx + 1].view(1, -1).to(device)
         sample_label = labels[sample_idx].item()
 
         col1, col2 = st.columns([1, 2])
@@ -234,7 +235,7 @@ elif demo_mode == "MNIST (Trained Models)":
 
             fig = px.bar(
                 x=list(range(10)),
-                y=probs.numpy(),
+                y=probs.cpu().numpy(),
                 labels={"x": "Class", "y": "Probability"},
                 title="Class Probabilities",
             )
@@ -733,8 +734,8 @@ elif demo_mode == "Credit Score (Real Dataset)":
 
                         # Bias change
                         df_with_preds = df.copy()
-                        df_with_preds["Orig_Pred"] = orig_preds.numpy()
-                        df_with_preds["Pruned_Pred"] = pruned_preds.numpy()
+                        df_with_preds["Orig_Pred"] = orig_preds.cpu().numpy()
+                        df_with_preds["Pruned_Pred"] = pruned_preds.cpu().numpy()
 
                         orig_good_a = (
                             df_with_preds[df_with_preds[protected_attr] == value_a]["Orig_Pred"]
