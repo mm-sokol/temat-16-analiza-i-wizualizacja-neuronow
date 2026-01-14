@@ -1,38 +1,47 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.utils.data import DataLoader, TensorDataset
 from src.config import ProjectConfig
-from src.modeling.architecture import InterpretableMLP
+from src.modeling.architecture import InterpretableMLP, SimpleCNN, RealCreditModel
 from src.dataset import MNISTDataModule
 from src.plots import VisualizationEngine
-
+from src.data.credit_score_data import load_credit_score_dataset
 
 class ModelTrainer:
-    """
-    Manages the training lifecycle.
-    Includes logic for the L1 regularization experiment.
-    """
-
-    def __init__(self, model: InterpretableMLP, config: ProjectConfig) -> None:
+    def __init__(self, model: nn.Module, config: ProjectConfig, criterion=None, lr=None) -> None:
         self.model = model
         self.config = config
-        self.criterion = nn.CrossEntropyLoss()
-        self.optimizer = optim.Adam(model.parameters(), lr=config.LEARNING_RATE)
+        self.device = getattr(config, 'DEVICE', 'cpu')
+        self.model.to(self.device)
+        
+        if criterion:
+            self.criterion = criterion
+        else:
+            self.criterion = nn.CrossEntropyLoss()
+            
+        learning_rate = lr if lr else config.LEARNING_RATE
+        self.optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
     def train_epoch(self, train_loader, use_l1_regularization: bool) -> float:
         self.model.train()
         total_loss = 0.0
 
         for batch_idx, (data, target) in enumerate(train_loader):
+            data, target = data.to(self.device), target.to(self.device)
+
+            if not isinstance(self.model, SimpleCNN):
+                if data.dim() > 2:
+                    data = data.view(data.size(0), -1)
+
             self.optimizer.zero_grad()
             output = self.model(data)
             loss = self.criterion(output, target)
 
             if use_l1_regularization:
-                # EXPERIMENT: Enforce sparsity in the first layer weights
-                # This simulates 'circuit discovery' by removing noisy connections
-                l1_norm = self.model.fc1.weight.abs().sum()
-                loss += self.config.L1_LAMBDA * l1_norm
+                if hasattr(self.model, 'fc1'):
+                    l1_norm = self.model.fc1.weight.abs().sum()
+                    loss += self.config.L1_LAMBDA * l1_norm
 
             loss.backward()
             self.optimizer.step()
@@ -46,21 +55,44 @@ class ModelTrainer:
         torch.save(self.model.state_dict(), path)
         print(f"Model saved to {path}")
 
+def train_real_credit_model(
+    X: torch.Tensor, 
+    y: torch.Tensor, 
+    input_dim: int, 
+    device: str, 
+    epochs: int = 30, 
+    batch_size: int = 256
+) -> nn.Module:
+    model = RealCreditModel(input_dim).to(device)
+    
+    class_counts = torch.bincount(y)
+    weights = 1. / class_counts.float()
+    weights = weights / weights.sum()
+    criterion = nn.CrossEntropyLoss(weight=weights.to(device))
+    
+    optimizer = optim.Adam(model.parameters(), lr=0.005)
+    
+    dataset = TensorDataset(X, y)
+    loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+    
+    model.train()
+    for _ in range(epochs):
+        for batch_x, batch_y in loader:
+            batch_x, batch_y = batch_x.to(device), batch_y.to(device)
+            
+            optimizer.zero_grad()
+            outputs = model(batch_x)
+            loss = criterion(outputs, batch_y)
+            loss.backward()
+            optimizer.step()
+            
+    model.eval()
+    return model
 
-def run_training_experiment() -> None:
-    """
-    Trains two models for comparison:
-    1. Standard Baseline
-    2. Sparsified Model (L1 Regularized)
-    """
-    config = ProjectConfig()
-    viz = VisualizationEngine(config.FIGURES_DIR)
-
-    # Data
+def run_mnist_experiment(config: ProjectConfig, viz: VisualizationEngine) -> None:
     data_module = MNISTDataModule(config)
     train_loader, _ = data_module.get_data_loaders()
 
-    # 1. Train Standard Model
     print(">>> Training Standard Model...")
     std_model = InterpretableMLP(
         config.INPUT_SIZE, config.HIDDEN_SIZE, config.OUTPUT_SIZE
@@ -76,7 +108,6 @@ def run_training_experiment() -> None:
     std_trainer.save_model("standard_mlp.pth")
     viz.plot_training_curves(std_losses, "Standard Model Loss", "loss_standard.png")
 
-    # 2. Train Sparse Model (The Experiment)
     print("\n>>> Training Sparse Model (L1 Regularized)...")
     sparse_model = InterpretableMLP(
         config.INPUT_SIZE, config.HIDDEN_SIZE, config.OUTPUT_SIZE
@@ -92,6 +123,40 @@ def run_training_experiment() -> None:
     sparse_trainer.save_model("sparse_mlp.pth")
     viz.plot_training_curves(sparse_losses, "Sparse Model Loss", "loss_sparse.png")
 
+    print("\n>>> Training Simple CNN...")
+    cnn_model = SimpleCNN() 
+    cnn_trainer = ModelTrainer(cnn_model, config)
+    cnn_losses = []
+
+    for epoch in range(config.EPOCHS):
+        loss = cnn_trainer.train_epoch(train_loader, use_l1_regularization=False)
+        cnn_losses.append(loss)
+        print(f"CNN Epoch {epoch+1}: Loss {loss:.4f}")
+
+    cnn_trainer.save_model("simple_cnn.pth")
+    viz.plot_training_curves(cnn_losses, "CNN Model Loss", "loss_cnn.png")
+
+def run_credit_scoring_experiment(config: ProjectConfig) -> None:
+    print("\n>>> Training Real Credit Score Model...")
+    try:
+        df, X, y, _, _ = load_credit_score_dataset(max_samples=10000)
+        device = getattr(config, 'DEVICE', 'cpu')
+        
+        model = train_real_credit_model(
+            X, y, X.shape[1], device, epochs=30, batch_size=256
+        )
+        
+        config.MODELS_DIR.mkdir(parents=True, exist_ok=True)
+        path = config.MODELS_DIR / "real_credit_model.pth"
+        torch.save(model.state_dict(), path)
+        print(f"Credit Model saved to {path}")
+        
+    except FileNotFoundError:
+        print("Skipping Credit Experiment: Dataset not found in data/raw/CreditScore/")
 
 if __name__ == "__main__":
-    run_training_experiment()
+    conf = ProjectConfig()
+    visualizer = VisualizationEngine(conf.FIGURES_DIR)
+    
+    run_mnist_experiment(conf, visualizer)
+    run_credit_scoring_experiment(conf)
