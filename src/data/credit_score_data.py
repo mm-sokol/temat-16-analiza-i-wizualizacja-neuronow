@@ -57,7 +57,7 @@ CATEGORICAL_FEATURES = [
 # Features that could be protected attributes (for bias analysis)
 PROTECTED_ATTRIBUTES = [
     'Occupation',
-    'Age_Group',
+    'Age_Group',  # We'll create age groups
     'Credit_Mix',
     'Payment_of_Min_Amount',
 ]
@@ -70,14 +70,22 @@ TARGET_ENCODING = {'Poor': 0, 'Standard': 1, 'Good': 2}
 
 
 def load_raw_data(data_path: Optional[Path] = None) -> pd.DataFrame:
-    """Load raw CSV data from the dataset."""
+    """Load raw CSV data from the dataset.
+
+    Args:
+        data_path: Path to the data directory. If None, uses default.
+
+    Returns:
+        Raw DataFrame.
+    """
     if data_path is None:
-        data_path = Path(__file__).resolve().parent.parent.parent / 'data' / 'raw' / 'CreditScore'
+        # Default path relative to project root (src/data/ -> parents[2] = project root)
+        data_path = Path(__file__).resolve().parents[2] / 'data' / 'raw' / 'CreditScore'
 
     train_path = data_path / 'train.csv'
 
     if not train_path.exists():
-        raise FileNotFoundError(f"Dataset not found. Script is looking at: {train_path}")
+        raise FileNotFoundError(f"Dataset not found at {train_path}")
 
     df = pd.read_csv(train_path, low_memory=False)
     return df

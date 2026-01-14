@@ -12,18 +12,24 @@ from pathlib import Path
 # PATH CONFIGURATION
 # ==========================================
 current_file = Path(__file__).resolve()
-project_root = current_file.parent.parent.parent
+streamlit_dir = current_file.parent.parent  # streamlit/
+project_root = streamlit_dir.parent  # project root
 sys.path.insert(0, str(project_root))
+sys.path.insert(0, str(streamlit_dir))  # For data_gen, model_utils
 
 # ==========================================
 # IMPORTS
 # ==========================================
 from data_gen import generate_synthetic_data
 from model_utils import train_model, SimpleMLP
-from src.interpretability import HookManager, run_ablation, discover_circuits
+from src.interpretability import HookManager, discover_circuits
 from src.interpretability.hooks import get_all_activations
 from src.interpretability.pruning import prune_biased_neurons
-from src.data.credit_score_data import load_credit_score_dataset, get_protected_attribute_values, PROTECTED_ATTRIBUTES
+from src.data.credit_score_data import (
+    load_credit_score_dataset,
+    get_protected_attribute_values,
+    PROTECTED_ATTRIBUTES,
+)
 from src.modeling.train import train_real_credit_model
 
 st.set_page_config(page_title="Credit Experiments", page_icon="💰", layout="wide")
