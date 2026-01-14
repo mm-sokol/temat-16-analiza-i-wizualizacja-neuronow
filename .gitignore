@@ -176,3 +176,5 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+data/raw/CreditScore/test.csv
+data/raw/CreditScore/train.csv
