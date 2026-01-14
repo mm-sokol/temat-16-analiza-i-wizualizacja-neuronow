@@ -155,7 +155,7 @@ with col_mid:
 with col_right:
     st.subheader("Explainability Tools")
     
-    tab1, tab2, tab3 = st.tabs(["🔍 Internal Activations", "✨ Pixel Attribution (Captum)", "✂️ Pruning"])
+    tab1, tab2, tab3 = st.tabs(["Internal Activations", "Pixel Attribution (Captum)", "Pruning"])
     
     # TAB 1: MECHANISTIC (What happened inside?)
     with tab1:
@@ -234,7 +234,7 @@ with col_right:
                 default=[0] if n_units > 0 else []
             )
             
-            if st.button("✂️ Perform Lobotomy"):
+            if st.button("Perform Lobotomy"):
                 # 1. Copy model
                 lobotomized_model = deepcopy(model)
                 

@@ -96,7 +96,7 @@ def visualize_activations(activations: Union[torch.Tensor, np.ndarray], layer_na
     # --- SCENARIO A: CNN (3D -> [Channels, Height, Width]) ---
     if acts.ndim == 3:
         n_channels = acts.shape[0]
-        st.markdown(f"#### 🧠 Convolutional Layer: `{layer_name}`")
+        st.markdown(f"Convolutional Layer: `{layer_name}`")
         st.caption(f"Detected {n_channels} feature maps. Each map responds to a specific visual pattern.")
         
         # Channel Selector
@@ -119,7 +119,7 @@ def visualize_activations(activations: Union[torch.Tensor, np.ndarray], layer_na
     # --- SCENARIO B: MLP (1D -> [Neurons]) ---
     elif acts.ndim == 1:
         n_neurons = len(acts)
-        st.markdown(f"#### ⚡ Linear Layer: `{layer_name}`")
+        st.markdown(f"Linear Layer: `{layer_name}`")
         
         # Use Histogram for very large layers to avoid clutter
         if n_neurons > 500:
@@ -146,4 +146,4 @@ def visualize_activations(activations: Union[torch.Tensor, np.ndarray], layer_na
     
     # --- SCENARIO C: Unsupported Shape ---
     else:
-        st.error(f"⚠️ Unsupported activation shape: {acts.shape}. Expected 1D (MLP) or 3D (CNN).")
+        st.error(f"Unsupported activation shape: {acts.shape}. Expected 1D (MLP) or 3D (CNN).")
